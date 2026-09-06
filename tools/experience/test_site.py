@@ -181,15 +181,20 @@ def browser_checks(root: Path, report_dir: Path, engines: list[str], base_url: s
                     page.locator('#search-input').fill('DNS')
                     assert page.locator('.search-items li:visible').count() == 1
                     page.keyboard.press('ArrowDown'); page.keyboard.press('Enter')
+                    page.wait_for_url('**/engineering/#dns', wait_until='load')
                     until(page,'location.hash === "#dns"')
                     assert '/engineering/' in page.url
+                    page.keyboard.press('Control+k')
+                    page.locator('#search-input').fill('TLS')
+                    page.keyboard.press('Enter')
+                    until(page, 'location.hash === "#tls" && !document.querySelector("#search-dialog").open && document.querySelector("#tab-tls").getAttribute("aria-selected") === "true"')
                     page.keyboard.press('Control+k')
                     page.locator('#search-input').fill('<img src=x onerror=alert(1)>')
                     assert page.locator('#search-empty').is_visible()
                     assert page.locator('#search-dialog img').count() == 0
                     page.keyboard.press('Escape')
                     assert not page.locator('#search-dialog').is_visible()
-                    result['interactions'].append({'engine':engine,'test':'command palette, keyboard search, empty state and input not treated as HTML','status':'PASS'})
+                    result['interactions'].append({'engine':engine,'test':'command palette, same-page links, keyboard search, empty state and no HTML injection','status':'PASS'})
                     page.goto(base_url+'guide/')
                     page.locator('summary').filter(has_text='Clone, build').click()
                     assert page.locator('#build-code').is_visible()
@@ -225,14 +230,19 @@ def browser_checks(root: Path, report_dir: Path, engines: list[str], base_url: s
                     result['interactions'].append({'engine':engine,'test':'strict CSP script/fetch blocking and no URL-driven redirect','status':'PASS'})
                     axe_path = os.environ.get('AXE_PATH')
                     if axe_path:
-                        for path in PAGES:
-                            page.goto(base_url+path)
-                            page.evaluate(Path(axe_path).read_text())
-                            audit = page.evaluate('async () => await axe.run(document, {runOnly:{type:"tag", values:["wcag2a","wcag2aa","wcag21aa"]}})')
-                            violations = audit['violations']
-                            (report_dir/f'axe-{engine}-{path.strip("/") or "home"}.json').write_text(json.dumps(violations,indent=2))
-                            assert not violations, [(v['id'],v['help']) for v in violations]
-                        result['interactions'].append({'engine':engine,'test':'axe WCAG 2.1 AA automated checks / four pages','status':'PASS'})
+                        for locale in ['', 'ko/']:
+                            for scheme in ['light', 'dark']:
+                                audit_context = browser.new_context(color_scheme=scheme, reduced_motion='reduce')
+                                audit_page = audit_context.new_page()
+                                for path in PAGES:
+                                    audit_page.goto(base_url+locale+path)
+                                    audit_page.evaluate(Path(axe_path).read_text())
+                                    audit = audit_page.evaluate('async () => await axe.run(document, {runOnly:{type:"tag", values:["wcag2a","wcag2aa","wcag21aa"]}})')
+                                    violations = audit['violations']
+                                    (report_dir/f'axe-{engine}-{locale.strip("/") or "en"}-{scheme}-{path.strip("/") or "home"}.json').write_text(json.dumps(violations,indent=2))
+                                    assert not violations, [(v['id'],v['help']) for v in violations]
+                                audit_context.close()
+                        result['interactions'].append({'engine':engine,'test':'axe WCAG 2.1 AA automated checks / four pages, two languages, two themes','status':'PASS'})
                     context.close()
                     mobile = browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce')
                     mp = mobile.new_page(); mp.goto(base_url)
