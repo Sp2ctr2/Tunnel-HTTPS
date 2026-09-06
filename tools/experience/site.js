@@ -83,6 +83,7 @@
   for (const button of document.querySelectorAll('[data-close]')) button.addEventListener('click', () => button.closest('dialog').close());
   for (const dialog of document.querySelectorAll('dialog')) {
     dialog.addEventListener('click', event => {
+      if (event.target.closest?.('a[href]')) { dialog.close(); return; }
       if (event.target !== dialog) return;
       const r = dialog.getBoundingClientRect();
       if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) dialog.close();
@@ -274,7 +275,7 @@
     zone.addEventListener('drop', event => {
       const files = event.dataTransfer?.files;
       if (files?.length === 1) choose(files[0]);
-      else output(t('Choose one file at a time.', '파일을 하나씩 선택하세요.'), 'error');
+      else { choose(null); output(t('Choose one file at a time.', '파일을 하나씩 선택하세요.'), 'error'); }
     });
     verify.addEventListener('click', async () => {
       const digest = expected.value.trim().toLowerCase();
