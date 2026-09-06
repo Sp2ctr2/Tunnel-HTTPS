@@ -13,12 +13,14 @@ css = '''
 .preview-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); justify-items: center; gap: 24px; }
 .interface .preview-strip img { min-width: 0; width: 100%; max-width: 250px; height: auto; }
 @media (max-width: 420px) {
+  .nav { flex-wrap: wrap; row-gap: 12px; padding-block: 18px; }
+  .navlinks { width: 100%; min-width: 0; justify-content: space-between; gap: 12px; }
+  .navlinks a, .navlinks a:first-child { display: inline-flex; align-items: center; min-height: 44px; }
   .preview-strip { grid-template-columns: minmax(0, 1fr); }
   .interface .preview-strip img { max-width: 245px; }
   .hero h1, h2, h3 { overflow-wrap: anywhere; }
 }
 '''
-# Append within the existing stylesheet literal so it overrides earlier layout rules.
 end = source.index("\n'''", source.index(marker) + len(marker))
 source = source[:end] + css + source[end:]
 path.write_text(source)
