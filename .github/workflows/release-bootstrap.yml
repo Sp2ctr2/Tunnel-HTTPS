@@ -1,0 +1,57 @@
+name: First signed beta
+
+on:
+  push:
+    branches: [oss-flagship-polish]
+    paths: [.github/workflows/release-bootstrap.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: first-signed-beta
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'Sp2ctr2/Tunnel-HTTPS' && github.ref_name == 'oss-flagship-polish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install build tools
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Verify source before creating signing identity
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease --no-daemon
+      - name: Install recovery encryption dependency
+        run: python3 -m pip install cryptography
+      - name: Create and checkpoint owner-authorized signing identity
+        run: python3 tools/release/bootstrap.py prepare
+      - name: Build signed, minified release APK
+        run: ./gradlew :app:assembleRelease --no-daemon
+      - name: Verify signatures, record provenance and create draft release
+        run: python3 tools/release/bootstrap.py package
+      - name: Preserve public verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: beta-build-evidence
+          path: |
+            dist/
+            app/build/reports/lint-results-*.html
+            app/build/test-results/testDebugUnitTest/*.xml
+          if-no-files-found: warn
+      - name: Remove runner-local signing material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/tunnel-signing"
