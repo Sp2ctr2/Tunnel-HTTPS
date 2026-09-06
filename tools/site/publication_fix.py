@@ -8,10 +8,17 @@ source = path.read_text()
 marker = "EXTRA_CSS = '''"
 assert source.count(marker) == 1
 css = '''
-/* Grid children must be allowed to shrink below their intrinsic content size. */
-.hero > *, .split > *, .learning > *, .download > *, .interface > *, .build-evidence > * { min-width: 0; }
+/* Bound intrinsic sizes without hiding content or shrinking readable type. */
+.hero > *, .split > *, .learning > *, .download > *, .interface > *, .build-evidence > *, .doc-layout > * { min-width: 0; }
+.prose section, .prose .table-wrap { min-width: 0; max-width: 100%; }
+.prose .table-wrap { overflow-x: auto; overscroll-behavior-x: contain; }
 .preview-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); justify-items: center; gap: 24px; }
 .interface .preview-strip img { min-width: 0; width: 100%; max-width: 250px; height: auto; }
+@media (max-width: 1100px) {
+  .doc-layout { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .toc { position: static; display: flex; flex-wrap: wrap; gap: 8px 20px; border-bottom: 1px solid var(--line); padding-bottom: 18px; }
+  .toc a { padding: 8px 0; }
+}
 @media (max-width: 420px) {
   .nav { flex-wrap: wrap; row-gap: 12px; padding-block: 18px; }
   .navlinks { width: 100%; min-width: 0; justify-content: space-between; gap: 12px; }
@@ -34,7 +41,6 @@ new = '''                    if page.evaluate('document.documentElement.scrollWi
                         page.screenshot(path=str(REPORT/f'overflow-{path.strip("/") or "home"}-{mode}-{width}.png'),full_page=True)
                         raise AssertionError(('horizontal page overflow', path, mode, width))'''
 source = source.replace(old, new)
-# Fixed automation predicates use CDP evaluation; application CSP stays enabled.
 assert source.count('page.wait_for_function(') == 4
 source = source.replace('page.wait_for_function(', 'wait_condition(page, ')
 assert source.count('import argparse\n') == 1
