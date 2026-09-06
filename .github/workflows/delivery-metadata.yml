@@ -1,0 +1,46 @@
+name: Collect beta delivery metadata
+on:
+  push:
+    branches: [oss-flagship-polish]
+    paths: [.github/workflows/delivery-metadata.yml]
+permissions:
+  contents: write
+jobs:
+  metadata:
+    if: github.repository == 'Sp2ctr2/Tunnel-HTTPS'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: oss-flagship-polish
+          persist-credentials: false
+      - name: Check and expose public provenance only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/beta-public"
+          gh release download v0.9.0-beta.1 --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/beta-public" --pattern 'release.json' --pattern 'signing-certificate.pem' --pattern 'test-summary.json'
+          gh api "repos/$GITHUB_REPOSITORY/contents/v0.9.0-beta.1.encrypted.json?ref=signing-recovery" --jq .content | base64 --decode > "$RUNNER_TEMP/beta-public/recovery.encrypted.json"
+          python3 - <<'PY'
+          import base64, json, os, pathlib, subprocess, textwrap
+          repo = os.environ['GITHUB_REPOSITORY']
+          directory = pathlib.Path(os.environ['RUNNER_TEMP']) / 'beta-public'
+          def put(path, content, branch):
+              args = ['gh','api',f'repos/{repo}/contents/{path}?ref={branch}']
+              old = subprocess.run(args,capture_output=True,text=True)
+              data = {'message':'release: record public verification and encrypted recovery',
+                      'branch':branch,'content':base64.b64encode(content).decode()}
+              if old.returncode == 0: data['sha'] = json.loads(old.stdout)['sha']
+              elif '404' not in old.stderr: raise RuntimeError(old.stderr)
+              subprocess.run(['gh','api',f'repos/{repo}/contents/{path}','--method','PUT','--input','-'],
+                             input=json.dumps(data),text=True,check=True,stdout=subprocess.DEVNULL)
+          for name in ['release.json','signing-certificate.pem','test-summary.json']:
+              put('docs/assets/'+name,(directory/name).read_bytes(),'oss-flagship-polish')
+          env=json.loads((directory/'recovery.encrypted.json').read_text())
+          env['ciphertext_parts']=textwrap.wrap(env.pop('ciphertext'),96)
+          put('v0.9.0-beta.1.encrypted-lines.json',(json.dumps(env,indent=2)+'\n').encode(),'signing-recovery')
+          print((directory/'release.json').read_text())
+          PY
