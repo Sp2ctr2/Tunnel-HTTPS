@@ -1,5 +1,7 @@
 # Tunnel HTTPS
 
+[![Android CI](https://github.com/Sp2ctr2/Tunnel-HTTPS/actions/workflows/ci.yml/badge.svg)](https://github.com/Sp2ctr2/Tunnel-HTTPS/actions/workflows/ci.yml)
+
 Tunnel HTTPS is a local Android VpnService and TUN utility for DNS protection, DNS-based ad and tracker blocking, selectable application bypass, and local IPv4/IPv6 connection handling.
 
 It is not a conventional remote VPN. It does not change your public IP or apparent country, does not provide anonymity, does not decrypt HTTPS content, and does not install a user CA. Depending on the selected mode, it can inspect packet metadata locally, including addresses, ports, DNS names, and TLS ClientHello metadata such as SNI.
