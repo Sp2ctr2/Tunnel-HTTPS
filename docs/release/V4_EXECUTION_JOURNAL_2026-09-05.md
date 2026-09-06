@@ -1,0 +1,95 @@
+# V4 execution journal
+
+Mission: `/home/sp2ctr2/Downloads/TUNNEL_HTTPS_EMULATOR_FIRST_AI_ENGINE_PLAN_v4.md`, read in full.
+
+Baseline: `/home/sp2ctr2/Projects/TunnelHTTPS_Competition_WORKING_COPY/project`, preserved unchanged. No Git repository exists; an isolated complete copy at `/home/sp2ctr2/Projects/TunnelHTTPS_V4_AI_WORKING_COPY` substitutes for a worktree. Existing APKs and historical benchmark files in the copy are baseline evidence, not new V4 results.
+
+Scope: emulator only, one bounded emulator and one Gradle worker at a time. No new source comments. Production neural model initially SHADOW. Promotion requires evidence; synthetic outcomes are not Internet measurements. No changes to packet validity, TLS verification, DNS hard-stop semantics, or committed-payload ownership are authorized as performance shortcuts.
+
+Delegation: Sol/Hubble owns new neural sidecar and deterministic core tests. Luna/Dirac owns independent A/B/C/D evaluation. Sol/Ohm reviews one narrowly scoped TCP allocation opportunity. Parent owns integration and decisions. Luna/Feynman owns evidence and final Downloads session report after execution ends.
+
+Initial inspection: TCP handler constructs direct destination mapping before every connection lookup, including ACK-only packets. Review requested for SYN-only lazy construction while preserving virtual mapping validation on every packet. TLS classification is already phase-gated; no evidence supports a new repeated ClientHello cache.
+
+Initial pending items, retained as history: core API, runtime integration, benchmark, narrow allocation experiment, final build and B1–B5 evidence. Later sections record their outcomes and remaining limits.
+
+## Design decisions
+
+- Baseline artifact hashes independently match prior final report: debug `20465af20496300ebc4cd1b260b0da32b795509a030f55c8738976aea559d3fc`, validation release `9a36090f6e597102039fae5624b8fe615ab496fb12743828965099c1b797a3cb`, unsigned release `bdd75d9967a96694ebc8bd197ee0872c40e2e2207fa6028f3a1629c8d2e3bbde`, bundle `b1802f78699939f85dc37b856f06528112c231b256a0a4dfc4dc723274ed43d7`.
+- Neural shape narrowed to 32–16–3, using only existing trustworthy context fields. IPv6/NAT64/CPU features are not fabricated. Neural state is session-local; no new model file loader or persistence/security rewrite.
+- Existing contextual learner remains the actual selected policy while V4 predicts in shadow. No active neural flag is shipped without promotion evidence.
+- Actual connection decisions and outcomes carry a bounded opaque token. Context/epoch association must be immutable; no counterfactual production training or duplicate network requests.
+- Existing DNS hedge delay is already adaptive to measured p50/p95 spread. New B3 benchmark measures that production resolver with controlled coroutine transport; this is host synthetic transport timing, not real encrypted resolver latency. No additional DNS or admission AI action is justified before connection ranking evidence.
+- Existing TLS processing is phase-gated. A generic PacketView/FastLaneLease rewrite adds lifetime/cache invalidation risk without current evidence. Preferred allocation experiment only moves direct mapping construction to initial SYN, retaining virtual-map checks for every packet.
+- Parent added internal SHADOW preference and diagnostic mode/count/inference fields; UI layout remains unchanged. Final runtime and artifact verification pending.
+
+## Integration review and corrections
+
+Independent Sol review found stale outcomes could contaminate the new context EMA, tokens could expire before long-lived connections reported success, neural stats/reset exceptions could affect legacy paths, asynchronous loading could republish a retired runtime, and per-decision full status computation added unmeasured cost.
+
+Corrections: decisions/outcomes now carry generation; stale envelopes are discarded before either learner/EMA update. Neural success is recorded at confirmed TLS first response and is explicitly a first-flight signal, not proof of certificate acceptance or lifetime transfer success. Existing learner still receives its original close-time success accounting. Neural calls share one guarded failure boundary. Loading publication and close serialize on the runtime lock, and older status owners cannot replace newer ones. Per-decision status reuses legacy confidence, sorts one bounded sample copy, and total runtime decision time has separate counters alongside neural inference time.
+
+Targeted gate passed before the last benchmark correction; its B4 result is intermediate and must not determine promotion. Parent found B4 credited fallback success to the failed initial strategy. Final evaluator instead feeds every actually attempted strategy its own outcome for A/B/C/D; unattempted outcomes stay hidden. Added A-fails/B-succeeds regression and raw observedAttempts. Final provenance hashing now resolves the Gradle app working directory and includes actual neural/current learner sources. World/scenario seeds were not changed to improve the model result.
+
+Compilation attempts before the targeted success failed on evaluation string syntax and metadata constructor fields while an agent was still editing. Exact diagnostics are retained in `benchmark-results/v4-targeted-gate/failures.md`. Integration ownership was then frozen before the final gate.
+
+## Final host gate and engineering decision
+
+Status correction after device testing: this 651-test gate and its APK hashes became the pre-warmup checkpoint, not the final delivered build. Device testing exposed cold neural inference budget trips; the bounded preparation fix requires a new gate and final-artifact device checks. The raw evidence below is retained unchanged.
+
+`benchmark-results/v4-final-gate/raw-console.log`: full offline single-worker gate completed successfully in 3m32s. JUnit XML totals are 651 tests in 56 suites, zero failures, errors or skipped tests. Lint has zero errors and six existing SDK/dependency-version warnings; dependencies and target SDK were deliberately not upgraded during this emulator-scoped engine change. Debug APK, unsigned release APK and release bundle all built. Exact SHA-256 values are in `benchmark-results/v4-final-gate/artifact-sha256.txt`.
+
+HOST MICROBENCHMARK: the final compiled TCP handler was compared with the preserved baseline handler using 10 warmup pairs and 30 measured pairs of 50,000 established direct-IPv4 ACK packets. Allocation fell from 824 to 264 bytes per packet (560 bytes, 67.96% reduction). Mean sample processing time fell from 276.226 to 135.651 ns per packet. Keep the SYN-only direct-mapping construction. These numbers describe this host JVM handler workload, not total app memory, Android ART performance or Internet throughput. Final class provenance and raw pairs are retained under `benchmark-results/v4-tcp-allocation/final-gate/`.
+
+SYNTHETIC AI BENCHMARK: the corrected final evaluator reports source hash `4189aea0ce02857309d7273865d15bae080c50c1f85a6c43035b22fd21156b43`, mode SHADOW, zero kill-switch trips and 336 trained observations. Across 144 evaluation connections, all four policies served 98.61% after fallback. B's p95 service cost was 3385 ms versus D's 3548 ms; wrong-choice rates were 54.86% versus 68.06%. D failed a per-scenario regression gate (`SHADOW_D_SCENARIO_REGRESSION`). Keep the real neural runtime in SHADOW, do not activate its suggestions and do not claim it beats the heuristic. Host D adapter inference p95 was 21.809 microseconds; this is not an Android measurement.
+
+B3 executed 25 controlled-transport production resolver samples: cache hit issued no upstream request; normal used one; hedge, slow-primary and primary-timeout used at most two. These are host controlled-transport results, not measured public DoH performance. Final CSV is `benchmark-results/v4-final-gate/b3/b3-dns.csv`.
+
+Emulator final-artifact measurements and the final Luna session report remain separate finalization items; earlier copied release validations must not be relabelled as V4 results.
+
+Final tooling review also fixed the standalone B4 runner's relative output-directory handling. It now resolves output beneath the project before passing the path to the Gradle test JVM, so test output and the Python summary reader use the same location. The runner explicitly limits Gradle to one worker. Both V4 shell runners passed `bash -n`; this tooling-only correction did not change the tested APK or B4 provenance sources.
+
+## Device checkpoint and rework
+
+The first Luna worker's shutdown also ended its owned emulator/fixture command sessions. Parent restarted the same read-only API 36 AVD with the same two-core/host-affinity settings, one instance only. This was orchestration cleanup, not an application crash. Earlier baseline measurements and the first NEXT checkpoint therefore span a reboot; an additional CURRENT baseline repeat was scheduled on the new boot.
+
+The pre-warmup APK's Aegis-OFF/Turbo-ACTIVE 32-way test recorded 154/160 measured passes and warmup failures. Device logs show a Wi-Fi-to-cellular default-network switch at the same time as the synchronized connection resets. Do not discard this run or portray it as a stable-network throughput result. A subsequent SHADOW-requested 32-way run passed 160/160, but its neural kill switch had tripped, so it does not prove SHADOW inference remained active throughout the workload.
+
+Actual TLS endpoint-identification probes passed 5/5 with TLS 1.3. However, neural inference took 12.416787 ms on its first quiet attempt, exceeding the unchanged 10 ms hard budget; an earlier startup/resource-sampled checkpoint recorded a 1003.278199 ms wall-time outlier. These are real measured failures of neural readiness, not evidence of faster AI. Sol was assigned a bounded pure-inference preparation step outside the packet selection path, without fabricated training observations, extra executors or relaxed production inference limits. Host/UI delays are visible in the logs, but a specific causal explanation for every outlier must not be overstated.
+
+The pre-warmup APK also passed five bounded stop/start cycles with monotonic service generation. Parent added reproducible emulator-only configuration and probe tools; their test-only root preauthorization is explicitly recorded and must not be presented as an end-user permission-flow test. The final release matrix will repeat the five existing probe types for three configurations.
+
+Sol's correction is source-frozen: up to 32 pure predictions with a 50 ms wall check between predictions, outside `outcomeDrainLock` on the existing scope. The legacy learner is published first; packet selection skips the new model until preparation completes. Warmup does not train, alter weights, issue tokens, populate OutcomeMap or increment operational counters. A single prediction cannot be forcibly preempted by the between-iteration wall check; do not describe 50 ms as an absolute OS scheduling deadline. The operational soft 1.5 ms/hard 10 ms limits remain unchanged. Three new tests cover unchanged weights/state, count/wall boundaries and non-finite rejection. The delivery gate is `benchmark-results/v4-delivery-gate/`.
+
+Sol also verified the OFF concurrency event: `networkChangeResets` increased from 0 to 2 while `tunnelRestartCount` stayed zero. The observed connection resets belong to real underlying-network transitions, not a service restart or demonstrated V4 TCP regression. The same-boot CURRENT repeat then passed all 1/8/32-way measured connections (5/5, 40/40, 160/160). Its 10 MiB per-flow median was 43.828 Mbps and 32-way aggregate median 44.078 Mbps; retain both this repeat and the earlier baseline instead of selecting the more favorable one.
+
+## Delivery build and measurements
+
+The post-preparation gate succeeded in 3m27s: 654 tests, 57 suites, zero failures/errors/skips; lint zero errors and six unchanged warnings. Debug SHA-256 is `b8a2336720e0f9f9b1f2bed36c027b697124f343e5309d86d6d352c414f0ea51`; unsigned release is `a99ed55068faed27e01f5d7dea70d57cc18e731026fb79875bb84c86d56f6ab1`; AAB is `b4248243adb192222a2af82c663d5459213a7d6d993b14465faeac99c7a89889`. The AAB is unsigned. The locally test-signed delivery release is `7e26227d42ef2a504082b68798c0e1f5d3f1445e07bf36b3d14c192a83319e45`; v2/v3 signatures and 16 KiB zip alignment passed. This is not an owner-signed production release.
+
+The delivered TCP handler class remains exactly `01633fa95bd1b2fbc02b54525488c9faf8ec6d36fd7fa9b5ad39de3191f240ac`, matching the measured allocation candidate byte for byte. `benchmark-results/v4-tcp-allocation/final-gate/delivery-class-match.txt` records the new APK association without overwriting original measurement provenance.
+
+Final B4 source hash is `2707b615130fdd6ed5dd912ad7a5a1a83552dd17876005fabb90c64be41dce77`. Synthetic outcome metrics and the no-promotion verdict are unchanged; D host adapter inference p95 is 21.860 microseconds in this run.
+
+EMULATOR VERIFIED, limited to the recorded checks: first delivered TLS group passed endpoint identification and TLS 1.3 five times. Runtime stayed AI_SHADOW with five decisions and five observations. Neural inference p50/p95 were 0.616771/3.463511 ms; total neural time was 5.783746 ms. Whole legacy-plus-neural-plus-status decision time totaled 37.265249 ms, maximum 16.330297 ms. These are different costs. The first five-sample p95 exceeds the 1.5 ms soft target, although the 10 ms operational neural hard limit did not trip. Warmup observations were not invented: the before-TLS new-model counters were zero.
+
+Delivery B1 passed all ten measured transfers in each of SHADOW-requested/Turbo-on, Aegis-OFF/Turbo-on and normal/Turbo-off profiles. Delivery B2 passed all 205 measured connections in each profile. However, the first SHADOW 32-way warmup had three timeouts and OFF had four, so those complete runner invocations correctly failed despite all measured samples passing. The dedicated SHADOW repeat passed 32/32 warmup and 160/160 measured samples. Do not erase the initial failures or state that every full run passed. The earlier pre-warmup network-transition failure is a separate event; counters stayed zero during the delivery warmup timeout cases, so network-transition causation is not established for these new timeouts.
+
+Matched normal/Turbo-off comparison on the same emulator boot: CURRENT repeat versus delivered NEXT had 10 MiB per-flow median 43.828 versus 44.692 Mbps and 32-way aggregate median 44.078 versus 46.782 Mbps. NEXT p95/p99 at 32-way were 5519.3/5984.44 ms versus CURRENT 6675.35/7067.15 ms. These are sequential small controlled runs, not randomized proof of Internet speed improvement. The robust kept performance evidence remains the deterministic handler allocation reduction.
+
+Sampled 32-way CURRENT/normal-NEXT PSS peaks were 134230/131322 KiB; thread peaks 140/142; average sampled CPU percentages 14.912/14.810. SHADOW/OFF PSS peaks were 134159/131940 KiB and thread peaks 154/161. Do not attribute variable coroutine-pool thread counts to neural benefits. The legacy sampler's `socketCountPeak` actually counts all `/proc/PID/fd` entries, not network sockets alone.
+
+The additional original CURRENT/Turbo-on 32-way control passed 32/32 warmup and 160/160 measured samples (`benchmark-results/v4-device/current-turbo-b2/`). Therefore the delivery warmup timeouts were not reproduced in that control. Their exact cause remains unconfirmed; neither a neural-specific cause nor an inherited Turbo defect is established. Keep them as an open high-concurrency cold-run limitation rather than claiming they were fixed.
+
+The longer delivered TLS group passed all 30 certificate-validated connections, but the neural hard limit tripped after five observations: mode AI_REWORK_REQUIRED, 30 decisions, five observations, neural p50/p95 0.315046/11.656204 ms, whole-runtime maximum 12.207524 ms. This limits the earlier five-request SHADOW success claim. Pure preparation improved initial readiness but does not prove uninterrupted SHADOW operation under longer ART/emulator scheduling. Existing connection handling continued successfully after the model was disabled. Keep the safety limit unchanged and the neural policy unpromoted; long-run inference tail cost remains REWORK. Do not relabel this result as 30 successful neural observations or continuous SHADOW operation.
+
+Final B5: five normal stop/start cycles and five burst-mode cycles passed, with monotonic service generations. An explicit emulator Wi-Fi disable/enable increased network-change resets from zero to two while service generation remained 23; the engine stayed connected and the model returned to SHADOW on the new epoch. Subsequent IPv6 HTTP/TCP 1 MiB, IPv4 UDP60000, IPv6 UDP1200 and public HTTPS all passed (5/5). This is an emulator network transition, not a carrier handoff or proof of physical NAT64 behavior.
+
+## Final release and handoff
+
+The canonical delivery release matrix passed 15/15 across normal MTU32768, battery MTU4096 and battery MTU4096 with Turbo ACTIVE. Each group has installed-hash and VPN-owner evidence. The active Turbo group was rerun after the existing SET_TURBO command and visual confirmation of the actual release UI's ACTIVE badge; before/after images are retained. The earlier requested-on-only supplemental group also passed 5/5, so total completed release protocol checks were 20/20, not twenty distinct canonical scenarios. See `benchmark-results/v4-release/delivery-matrix.md` for exact paths and interpretation.
+
+The first MTU4096 setup checked owner readiness slightly too early and stopped before traffic. It was a test-tool readiness race, not a failed protocol probe. The fixed setup tool polls the actual connected VPN owner under a 15-second deadline instead of relying on a three-second delay. The original preflight snapshot is preserved and the successful retry has a separate directory. All newly added device scripts passed syntax checks; no application source changed after the delivery gate.
+
+Implementation and bounded validation have ended. Parent removed the owned ADB forward, stopped the sole owned emulator PID 1862217 and fixture PID 1862319, and left unrelated host applications untouched. The original stable source tree and its `20465af...` debug APK remain unchanged. The V4 copy is the delivered development/verification tree; it has not replaced the stable original. Luna/Zeno is assigned the final complete Korean session report in Downloads.
+
+Final decision: KEEP the measured TCP allocation optimization and the safety/ownership corrections. Keep the actual neural runtime SHADOW-only, with reactive kill-switch behavior disclosed; sustained inference-tail stabilization remains REWORK. High-concurrency warmup timeouts remain a disclosed unresolved limitation rather than an allegedly fixed bug. No ACTIVE neural promotion, physical-device/carrier claims, remote training export, HTTPS decryption, packet-check shortcuts, or broad speculative fast-path rewrite were introduced.
