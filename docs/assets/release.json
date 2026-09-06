@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "version": "0.9.0-beta.1",
+  "version_code": 11,
+  "application_id": "com.tunnelvpn.app",
+  "min_sdk": 24,
+  "target_sdk": 36,
+  "source_commit": "3af96247939f86b1a89fdae8c234d11469b70566",
+  "build_run": "https://github.com/Sp2ctr2/Tunnel-HTTPS/actions/runs/34042355973",
+  "apk": "TunnelHTTPS-0.9.0-beta.1.apk",
+  "apk_sha256": "90678bd343ee1359d08ac23ce05ba414897a58e03b68e17fca285e29ff6121a4",
+  "certificate_sha256": "fbd8c2508d81843ff6f7cdaaba62e85c935fd8a0e1e8aac465a29b7b12a16e46",
+  "tests": {
+    "tests": 654,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": 57
+  },
+  "validation_scope": "GitHub-hosted JVM tests, Android lint, minified signed release build; not physical-device certification"
+}
