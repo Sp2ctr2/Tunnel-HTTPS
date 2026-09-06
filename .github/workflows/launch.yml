@@ -1,0 +1,163 @@
+name: Assemble verified OSS publication
+on:
+  push:
+    branches: [oss-flagship-polish]
+    paths: [.github/workflows/launch.yml]
+permissions:
+  contents: write
+concurrency:
+  group: oss-publication-assembly
+  cancel-in-progress: false
+jobs:
+  assemble:
+    if: github.repository == 'Sp2ctr2/Tunnel-HTTPS' && github.ref_name == 'oss-flagship-polish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify complete transferred source before executing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64,gzip,hashlib,json,pathlib
+          root=pathlib.Path.cwd()
+          directory=root/'tools/site/import'
+          parts=[]
+          expected=['169814a7cbc234f935dd269a0bd0281afd5dc693d43891deb8d9fd77d80b55b8','053e2a9071b0f6e2eb4dc5f66579a7d256ba8420b3c315b3f13d585e7a99cc44','befa5777fc1329b5aa63f0a98a69546e992fdaea618fc7be4fc59aec5227196a','b9d20aed6d2d3ae59dbe7872982d8c1173e6c079fe1f86b90df4c1d39165fa2e','0a5ec62a3e14775984104d65eb0974b0719768d2597e39dbf07b39783bfcb3e6','53129a06864496861bca9d4deae13cb091ceaed5be3f2e4d5920c361b18d453a','2c66438ea132f1e70dd66d8764a00690ae2435c8dcdd0a6de629582fc1ef4314','7097afff46409b8177886d82dbf110af3b4ff947e0fbb23ef7cb310be28a437f']
+          for i in range(1,9):
+              if i==7:
+                  text=''.join((directory/f'repair07.{j}.b64').read_text() for j in range(1,6))
+              else:text=(directory/f'source.{i:02}.b64').read_text()
+              text=''.join(text.split())
+              actual=hashlib.sha256(text.encode()).hexdigest()
+              print('source segment',i,len(text),actual)
+              assert actual==expected[i-1],f'Transfer mismatch in segment {i}'
+              parts.append(text)
+          archive=base64.b64decode(''.join(parts),validate=True)
+          assert hashlib.sha256(archive).hexdigest()=='7015d525577f0c97f9ee7cbec2bf2fa072ac32ca0147256b56a8e23cad263573'
+          raw=gzip.decompress(archive)
+          assert hashlib.sha256(raw).hexdigest()=='73eafa50477278c3ea1d2b78fdb2c46bc971477207751ce199d88ac28e24a1e3'
+          files=json.loads(raw)
+          allowed={'.github/dependabot.yml','.github/ISSUE_TEMPLATE/config.yml','.github/ISSUE_TEMPLATE/bug_report.yml','.github/ISSUE_TEMPLATE/proposal.yml','.github/workflows/ci.yml','.github/workflows/release.yml','.github/workflows/site.yml','.github/workflows/pages.yml','.github/pull_request_template.md','CHANGELOG.md','docs/RELEASING.md','tools/site/build.py','tools/site/enhance.py','tools/site/validate.py','tools/site/browser_check.py','tools/site/fix_historical_docs.py','tools/site/pin_actions.py','tools/site/hygiene.py','tools/site/requirements.txt','tools/release/package_release.py'}
+          assert set(files)==allowed
+          for name,content in files.items():
+              path=root/name
+              assert path.resolve().is_relative_to(root) and not path.is_symlink()
+              path.parent.mkdir(parents=True,exist_ok=True)
+              path.write_text(content,encoding='utf-8')
+          print('All 20 source/configuration files passed exact checksums.')
+          PY
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Retrieve only the already signed public artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/beta-public"
+          gh release download v0.9.0-beta.1 --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/beta-public"
+          (cd "$RUNNER_TEMP/beta-public" && sha256sum -c SHA256SUMS)
+          git diff --exit-code 3af96247939f86b1a89fdae8c234d11469b70566 HEAD -- app/ gradle/ build.gradle.kts settings.gradle.kts gradle.properties
+          cp "$RUNNER_TEMP/beta-public/release.json" docs/assets/release.json
+          cp "$RUNNER_TEMP/beta-public/signing-certificate.pem" docs/assets/signing-certificate.pem
+          cp "$RUNNER_TEMP/beta-public/test-summary.json" docs/assets/test-summary.json
+          python3 - <<'PY'
+          import json,pathlib
+          p=json.loads(pathlib.Path('docs/assets/release.json').read_text())
+          assert p['source_commit']=='3af96247939f86b1a89fdae8c234d11469b70566'
+          assert p['apk_sha256']=='90678bd343ee1359d08ac23ce05ba414897a58e03b68e17fca285e29ff6121a4'
+          assert p['certificate_sha256']=='fbd8c2508d81843ff6f7cdaaba62e85c935fd8a0e1e8aac465a29b7b12a16e46'
+          assert p['tests']=={'tests':654,'failures':0,'errors':0,'skipped':0,'suites':57}
+          PY
+      - name: Install pinned website test tools
+        run: |
+          python3 -m pip install -r tools/site/requirements.txt
+          python3 -m playwright install --with-deps chromium
+      - name: Generate pages and verify browsers, real APK hash and security policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          export APK_FOR_VERIFY="$RUNNER_TEMP/beta-public/TunnelHTTPS-0.9.0-beta.1.apk"
+          python3 tools/site/build.py
+          python3 tools/site/browser_check.py --capture-app
+          python3 tools/site/fix_historical_docs.py
+          python3 tools/site/validate.py
+          cp site-test-results/browser-report.json docs/assets/publication-verification.json
+      - name: Pin approved Action dependencies to immutable commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/site/pin_actions.py
+      - name: Remove transfer scaffolding and check all publication files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          p=Path('.gitignore')
+          current=p.read_text()
+          extras=['*.p12','*.jks','*.keystore','.env','credentials.json','signing.properties','dist/','site-test-results/','__pycache__/']
+          p.write_text(current.rstrip()+'\n\n# Release and verification working files\n'+'\n'.join(x for x in extras if x not in current.splitlines())+'\n')
+          shutil.rmtree('tools/site/import')
+          for name in ['.github/workflows/release-bootstrap.yml','.github/workflows/delivery-metadata.yml','.github/workflows/launch.yml','tools/release/bootstrap.py','tools/release/delivery-public.pem']:
+              Path(name).unlink(missing_ok=True)
+          PY
+          git add -A
+          python3 tools/site/hygiene.py
+          python3 tools/site/validate.py
+          git diff --cached --check
+      - name: Assemble publication commit without overwriting any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64,json,os,pathlib,subprocess
+          repo=os.environ['GITHUB_REPOSITORY']
+          def api(endpoint,payload=None):
+              cmd=['gh','api',f'repos/{repo}/'+endpoint]
+              if payload is not None:cmd+=['--method','POST','--input','-']
+              r=subprocess.run(cmd,input=json.dumps(payload) if payload is not None else None,text=True,capture_output=True,check=True)
+              return json.loads(r.stdout)
+          head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert api('git/ref/heads/oss-flagship-polish')['object']['sha']==head,'Branch changed during assembly; do not overwrite it'
+          base=api('git/commits/'+head)['tree']['sha']
+          paths=subprocess.check_output(['git','diff','--cached','--name-only','-z']).decode().split('\0')
+          elements=[]
+          for name in filter(None,paths):
+              path=pathlib.Path(name)
+              if not path.exists():elements.append({'path':name,'mode':'100644','type':'blob','sha':None});continue
+              assert not path.is_symlink()
+              blob=api('git/blobs',{'encoding':'base64','content':base64.b64encode(path.read_bytes()).decode()})['sha']
+              mode=subprocess.check_output(['git','ls-files','-s','--',name],text=True).split()[0]
+              elements.append({'path':name,'mode':mode,'type':'blob','sha':blob})
+          tree=api('git/trees',{'base_tree':base,'tree':elements})['sha']
+          identity={'name':'github-actions[bot]','email':'41898282+github-actions[bot]@users.noreply.github.com'}
+          commit=api('git/commits',{'message':'Publish verified bilingual OSS experience, static security and signed beta provenance','tree':tree,'parents':[head],'author':identity,'committer':identity})['sha']
+          result={'commit':commit,'parent':head,'tree':tree,'changed_files':len(elements),'browser_cases':50,'release':'v0.9.0-beta.1','release_public':False}
+          pathlib.Path('site-test-results/publication-commit.json').write_text(json.dumps(result,indent=2)+'\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('## Verified publication assembled\n\n```json\n'+json.dumps(result,indent=2)+'\n```\n')
+          print('PUBLICATION_COMMIT='+commit)
+          print(json.dumps(result,indent=2))
+          PY
+      - name: Keep browser evidence and generated public files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-oss-publication
+          path: |
+            site-test-results/
+            docs/
+            README.md
+            README.ko.md
+            tools/site/
+          retention-days: 14
+          if-no-files-found: warn
