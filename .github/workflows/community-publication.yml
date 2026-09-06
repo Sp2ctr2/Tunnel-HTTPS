@@ -3,7 +3,7 @@ name: Verified community publication
 on:
   push:
     branches: [main]
-    paths: [.github/workflows/community-publication.yml]
+    paths: [.github/workflows/community-publication.yml, tools/community/**]
   workflow_dispatch:
 
 permissions:
@@ -36,6 +36,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - name: Retrieve only the previously built public artifacts
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,44 +62,6 @@ jobs:
           assert m['tests']=={'tests':654,'failures':0,'errors':0,'skipped':0,'suites':57}
           print('Existing APK and build manifest match the reviewed artifact.')
           PY
-      - name: Verify signature and install the exact APK on Android 15
-        shell: bash
-        run: |
-          set -euo pipefail
-          sdkmanager 'build-tools;36.0.0' 'platform-tools' 'emulator' 'system-images;android-35;google_apis;x86_64' > "$RUNNER_TEMP/sdk-install.log" 2>&1
-          APK="$RUNNER_TEMP/beta-public/TunnelHTTPS-0.9.0-beta.1.apk"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee publication-results/signature.txt
-          grep -q 'fbd8c2508d81843ff6f7cdaaba62e85c935fd8a0e1e8aac465a29b7b12a16e46' publication-results/signature.txt
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" > publication-results/package.txt
-          grep -q "package: name='com.tunnelvpn.app' versionCode='11' versionName='0.9.0-beta.1'" publication-results/package.txt
-          if grep -q 'application-debuggable' publication-results/package.txt; then exit 1; fi
-          echo no | avdmanager create avd --force --name publication --package 'system-images;android-35;google_apis;x86_64'
-          test -e /dev/kvm
-          sudo chmod a+rw /dev/kvm
-          "$ANDROID_HOME/emulator/emulator" -avd publication -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2 > "$RUNNER_TEMP/emulator.log" 2>&1 &
-          EMULATOR_PID=$!
-          trap 'kill "$EMULATOR_PID" 2>/dev/null || true' EXIT
-          timeout 180 adb wait-for-device
-          ready=0
-          for i in $(seq 1 120); do
-            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = '1' ]; then ready=1; break; fi
-            sleep 2
-          done
-          test "$ready" = '1'
-          adb shell input keyevent 82
-          adb install -r "$APK" | tee publication-results/install.txt
-          grep -q 'Success' publication-results/install.txt
-          ACTIVITY=$(adb shell cmd package resolve-activity --brief com.tunnelvpn.app | tr -d '\r' | tail -n 1)
-          case "$ACTIVITY" in com.tunnelvpn.app/*) ;; *) exit 1 ;; esac
-          for i in 1 2 3; do
-            adb shell am force-stop com.tunnelvpn.app
-            adb shell am start -W -n "$ACTIVITY" > "publication-results/launch-$i.txt"
-            grep -q 'Status: ok' "publication-results/launch-$i.txt"
-            sleep 5
-            adb shell pidof com.tunnelvpn.app | grep -q '[0-9]'
-          done
-          adb exec-out screencap -p > publication-results/android15-initial-screen.png
-          printf 'PASS: exact signed beta installed; three cold launches remained running.\nAndroid 15/API 35 x86_64 emulator, not physical hardware.\nNo VPN traffic, carrier, handover or long-run certification is inferred.\n' > publication-results/installation-smoke.txt
       - name: Prepare and test the complete public surface
         shell: bash
         run: |
@@ -114,6 +79,8 @@ jobs:
           git add README.md README.ko.md docs tools/site
           git diff --cached --check
           git diff --exit-code HEAD -- app/
+      - name: Verify signature and install the exact APK on Android 15
+        run: bash tools/community/install_smoke.sh
       - name: Commit verified public files without overwriting concurrent work
         env:
           GH_TOKEN: ${{ github.token }}
@@ -155,7 +122,8 @@ jobs:
           for path in '' 'story/' 'story/ko/' 'guide/' 'engineering/' 'privacy/' 'feed.xml' 'sitemap.xml'; do
             curl --fail --location --retry 5 --retry-delay 4 --silent --show-error "https://sp2ctr2.github.io/Tunnel-HTTPS/$path" > "$RUNNER_TEMP/public-page"
           done
-          curl --fail --silent --show-error 'https://sp2ctr2.github.io/Tunnel-HTTPS/story/' | grep -q 'Below the connect button'
+          curl --fail --silent --show-error 'https://sp2ctr2.github.io/Tunnel-HTTPS/story/' > publication-results/public-story.html
+          grep -q 'Below the connect button' publication-results/public-story.html
           printf 'Public project pages, both stories, feed and sitemap returned successfully.\n' > publication-results/public-website.txt
       - name: Preserve verification evidence
         if: always()
@@ -166,4 +134,5 @@ jobs:
             publication-results/
             documentation-render-results/
             site-test-results/
+            docs/
           retention-days: 14
