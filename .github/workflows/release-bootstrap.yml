@@ -1,18 +1,14 @@
 name: First signed beta
-
 on:
   push:
     branches: [oss-flagship-polish]
     paths: [.github/workflows/release-bootstrap.yml]
   workflow_dispatch:
-
 permissions:
   contents: write
-
 concurrency:
   group: first-signed-beta
-  cancel-in-progress: false
-
+  cancel-in-progress: true
 jobs:
   build:
     if: github.repository == 'Sp2ctr2/Tunnel-HTTPS' && github.ref_name == 'oss-flagship-polish'
