@@ -82,6 +82,12 @@
   }
   for (const button of document.querySelectorAll('[data-close]')) button.addEventListener('click', () => button.closest('dialog').close());
   for (const dialog of document.querySelectorAll('dialog')) {
+    // Search inputs can consume Escape before the native dialog cancels.
+    // One Escape closes the dialog, including when the search has no results.
+    dialog.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault(); event.stopPropagation(); dialog.close();
+    });
     dialog.addEventListener('click', event => {
       if (event.target.closest?.('a[href]')) { dialog.close(); return; }
       if (event.target !== dialog) return;
