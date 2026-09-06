@@ -1,0 +1,3 @@
+# Public certificate exports can contain CRLF; store a canonical text representation.
+# This does not alter APKs, signing keys, or the certificate's DER fingerprint.
+docs/assets/signing-certificate.pem text eol=lf
