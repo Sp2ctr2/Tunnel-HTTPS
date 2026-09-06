@@ -1,0 +1,169 @@
+name: Verified community publication
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/community-publication.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Sp2ctr2/Tunnel-HTTPS' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+      - name: Retrieve only the previously built public artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/beta-public" publication-results
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/9993291997/zip" > "$RUNNER_TEMP/site-seed.zip"
+          gh release download v0.9.0-beta.1 --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/beta-public" \
+            --pattern 'TunnelHTTPS-0.9.0-beta.1.apk' --pattern 'release.json' --pattern 'SHA256SUMS' \
+            --pattern 'signing-certificate.pem' --pattern 'signature-verification.txt' --pattern 'test-summary.json'
+          (cd "$RUNNER_TEMP/beta-public" && sha256sum -c SHA256SUMS)
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'beta-public'
+          m=json.loads((p/'release.json').read_text())
+          assert m['source_commit']=='3af96247939f86b1a89fdae8c234d11469b70566'
+          assert m['apk_sha256']=='90678bd343ee1359d08ac23ce05ba414897a58e03b68e17fca285e29ff6121a4'
+          assert hashlib.sha256((p/'TunnelHTTPS-0.9.0-beta.1.apk').read_bytes()).hexdigest()==m['apk_sha256']
+          assert m['certificate_sha256']=='fbd8c2508d81843ff6f7cdaaba62e85c935fd8a0e1e8aac465a29b7b12a16e46'
+          assert m['tests']=={'tests':654,'failures':0,'errors':0,'skipped':0,'suites':57}
+          print('Existing APK and build manifest match the reviewed artifact.')
+          PY
+      - name: Verify signature and install the exact APK on Android 15
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager 'build-tools;36.0.0' 'platform-tools' 'emulator' 'system-images;android-35;google_apis;x86_64' > "$RUNNER_TEMP/sdk-install.log" 2>&1
+          APK="$RUNNER_TEMP/beta-public/TunnelHTTPS-0.9.0-beta.1.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee publication-results/signature.txt
+          grep -q 'fbd8c2508d81843ff6f7cdaaba62e85c935fd8a0e1e8aac465a29b7b12a16e46' publication-results/signature.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" > publication-results/package.txt
+          grep -q "package: name='com.tunnelvpn.app' versionCode='11' versionName='0.9.0-beta.1'" publication-results/package.txt
+          if grep -q 'application-debuggable' publication-results/package.txt; then exit 1; fi
+          echo no | avdmanager create avd --force --name publication --package 'system-images;android-35;google_apis;x86_64'
+          test -e /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -avd publication -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2 > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          EMULATOR_PID=$!
+          trap 'kill "$EMULATOR_PID" 2>/dev/null || true' EXIT
+          timeout 180 adb wait-for-device
+          ready=0
+          for i in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = '1' ]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = '1'
+          adb shell input keyevent 82
+          adb install -r "$APK" | tee publication-results/install.txt
+          grep -q 'Success' publication-results/install.txt
+          ACTIVITY=$(adb shell cmd package resolve-activity --brief com.tunnelvpn.app | tr -d '\r' | tail -n 1)
+          case "$ACTIVITY" in com.tunnelvpn.app/*) ;; *) exit 1 ;; esac
+          for i in 1 2 3; do
+            adb shell am force-stop com.tunnelvpn.app
+            adb shell am start -W -n "$ACTIVITY" > "publication-results/launch-$i.txt"
+            grep -q 'Status: ok' "publication-results/launch-$i.txt"
+            sleep 5
+            adb shell pidof com.tunnelvpn.app | grep -q '[0-9]'
+          done
+          adb exec-out screencap -p > publication-results/android15-initial-screen.png
+          printf 'PASS: exact signed beta installed; three cold launches remained running.\nAndroid 15/API 35 x86_64 emulator, not physical hardware.\nNo VPN traffic, carrier, handover or long-run certification is inferred.\n' > publication-results/installation-smoke.txt
+      - name: Prepare and test the complete public surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install markdown-it-py==4.0.0 playwright==1.57.0 Pillow==12.0.0
+          python3 -m playwright install --with-deps chromium
+          python3 tools/community/prepare.py "$RUNNER_TEMP/site-seed.zip"
+          cmp docs/assets/release.json "$RUNNER_TEMP/beta-public/release.json"
+          python3 -m unittest discover -s tools/docs -p 'test_*.py' -v
+          git add README.md README.ko.md docs tools/site
+          python3 tools/docs/check_rendering.py
+          python3 tools/site/validate.py
+          APK_FOR_VERIFY="$RUNNER_TEMP/beta-public/TunnelHTTPS-0.9.0-beta.1.apk" python3 tools/site/browser_check.py
+          cp site-test-results/browser-report.json docs/assets/publication-verification.json
+          git add README.md README.ko.md docs tools/site
+          git diff --cached --check
+          git diff --exit-code HEAD -- app/
+      - name: Commit verified public files without overwriting concurrent work
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          test "$REMOTE" = "$GITHUB_SHA"
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Publish verified bilingual project site and developer launch story'
+          gh auth setup-git
+          git push origin HEAD:main
+          git rev-parse HEAD > publication-results/publication-commit.txt
+          gh api -H 'Accept: application/vnd.github.html+json' "repos/$GITHUB_REPOSITORY/readme?ref=$(git rev-parse HEAD)" > publication-results/github-readme.html
+          python3 tools/docs/check_rendering.py --native-readme publication-results/github-readme.html
+      - name: Publish the verified existing beta without changing its signing identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload v0.9.0-beta.1 publication-results/installation-smoke.txt --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit v0.9.0-beta.1 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/v0.9.0-beta.1/TunnelHTTPS-0.9.0-beta.1.apk" \
+            -o "$RUNNER_TEMP/public-redownload.apk"
+          echo "90678bd343ee1359d08ac23ce05ba414897a58e03b68e17fca285e29ff6121a4  $RUNNER_TEMP/public-redownload.apk" | sha256sum -c -
+          printf 'Signed beta published; unauthenticated APK download matches the pinned digest.\n' > publication-results/public-download.txt
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
+        with:
+          path: docs
+      - name: Deploy public website
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
+      - name: Verify the public story and feed without authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in '' 'story/' 'story/ko/' 'guide/' 'engineering/' 'privacy/' 'feed.xml' 'sitemap.xml'; do
+            curl --fail --location --retry 5 --retry-delay 4 --silent --show-error "https://sp2ctr2.github.io/Tunnel-HTTPS/$path" > "$RUNNER_TEMP/public-page"
+          done
+          curl --fail --silent --show-error 'https://sp2ctr2.github.io/Tunnel-HTTPS/story/' | grep -q 'Below the connect button'
+          printf 'Public project pages, both stories, feed and sitemap returned successfully.\n' > publication-results/public-website.txt
+      - name: Preserve verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: community-publication-evidence
+          path: |
+            publication-results/
+            documentation-render-results/
+            site-test-results/
+          retention-days: 14
