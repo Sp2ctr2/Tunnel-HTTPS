@@ -276,7 +276,7 @@
   :root[data-suspended="true"] * { animation-play-state: paused !important; }
   @media (prefers-reduced-motion: no-preference) {
     @view-transition { navigation: auto; }
-    :root:not([data-motion="off"]) .brand { view-transition-name: brand; }
+    :root:not([data-motion="off"]) .site-header .brand { view-transition-name: brand; }
     ::view-transition-old(root) { animation: leave .18s ease-out both; }
     ::view-transition-new(root) { animation: arrive .35s var(--ease) both; }
     ::view-transition-group(brand) { animation-duration: .35s; }
@@ -362,7 +362,6 @@
     .portal-bottom { margin: 0 20px; padding-top: 15px; }
     .portal-summary { font-size: 11px; }
     .portal-caption { font-size: 9px; }
-    section { padding-block: 44px; }
     .facts { grid-template-columns: 1fr; gap: 18px; padding-block: 24px; }
     .fact { font-size: 13px; gap: 24px; }
     .fact small { display: block; }
