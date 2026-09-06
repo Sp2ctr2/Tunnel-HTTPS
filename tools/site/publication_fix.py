@@ -30,6 +30,9 @@ css = '''
 '''
 end = source.index("\n'''", source.index(marker) + len(marker))
 source = source[:end] + css + source[end:]
+assert source.count("put('docs/assets/site.css',css)") == 1
+source = source.replace("put('docs/assets/site.css',css)", "put('docs/assets/site.css', css.rstrip() + chr(10))")
+compile(source, str(path), 'exec')
 path.write_text(source)
 path = ROOT / 'tools/site/browser_check.py'
 source = path.read_text()
