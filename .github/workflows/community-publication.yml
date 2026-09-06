@@ -3,7 +3,7 @@ name: Verified community publication
 on:
   push:
     branches: [main]
-    paths: [.github/workflows/community-publication.yml, tools/community/**]
+    paths: [.github/workflows/community-publication.yml, tools/community/**, tools/publication_surface.py]
   workflow_dispatch:
 
 permissions:
@@ -66,9 +66,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install markdown-it-py==4.0.0 playwright==1.57.0 Pillow==12.0.0
-          python3 -m playwright install --with-deps chromium
+          python3 -m pip install -q markdown-it-py==4.0.0 playwright==1.57.0 Pillow==12.0.0
+          python3 -m playwright install --with-deps chromium > publication-results/browser-install.log 2>&1
           python3 tools/community/prepare.py "$RUNNER_TEMP/site-seed.zip"
+          python3 tools/publication_surface.py
           cmp docs/assets/release.json "$RUNNER_TEMP/beta-public/release.json"
           python3 -m unittest discover -s tools/docs -p 'test_*.py' -v
           git add README.md README.ko.md docs tools/site
