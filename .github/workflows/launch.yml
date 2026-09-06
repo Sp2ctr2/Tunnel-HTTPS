@@ -2,7 +2,7 @@ name: Assemble verified OSS publication
 on:
   push:
     branches: [oss-flagship-polish]
-    paths: [.github/workflows/launch.yml]
+    paths: [.github/workflows/launch.yml, tools/site/publication_fix.py]
 permissions:
   contents: write
 concurrency:
@@ -34,7 +34,6 @@ jobs:
               else:text=(directory/f'source.{i:02}.b64').read_text()
               text=''.join(text.split())
               actual=hashlib.sha256(text.encode()).hexdigest()
-              print('source segment',i,len(text),actual)
               assert actual==expected[i-1],f'Transfer mismatch in segment {i}'
               parts.append(text)
           archive=base64.b64decode(''.join(parts),validate=True)
@@ -51,6 +50,7 @@ jobs:
               path.write_text(content,encoding='utf-8')
           print('All 20 source/configuration files passed exact checksums.')
           PY
+          python3 tools/site/publication_fix.py
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
@@ -106,7 +106,7 @@ jobs:
           extras=['*.p12','*.jks','*.keystore','.env','credentials.json','signing.properties','dist/','site-test-results/','__pycache__/']
           p.write_text(current.rstrip()+'\n\n# Release and verification working files\n'+'\n'.join(x for x in extras if x not in current.splitlines())+'\n')
           shutil.rmtree('tools/site/import')
-          for name in ['.github/workflows/release-bootstrap.yml','.github/workflows/delivery-metadata.yml','.github/workflows/launch.yml','tools/release/bootstrap.py','tools/release/delivery-public.pem']:
+          for name in ['.github/workflows/release-bootstrap.yml','.github/workflows/delivery-metadata.yml','.github/workflows/launch.yml','tools/release/bootstrap.py','tools/release/delivery-public.pem','tools/site/publication_fix.py']:
               Path(name).unlink(missing_ok=True)
           PY
           git add -A
@@ -142,7 +142,8 @@ jobs:
           tree=api('git/trees',{'base_tree':base,'tree':elements})['sha']
           identity={'name':'github-actions[bot]','email':'41898282+github-actions[bot]@users.noreply.github.com'}
           commit=api('git/commits',{'message':'Publish verified bilingual OSS experience, static security and signed beta provenance','tree':tree,'parents':[head],'author':identity,'committer':identity})['sha']
-          result={'commit':commit,'parent':head,'tree':tree,'changed_files':len(elements),'browser_cases':50,'release':'v0.9.0-beta.1','release_public':False}
+          report=json.loads(pathlib.Path('site-test-results/browser-report.json').read_text())
+          result={'commit':commit,'parent':head,'tree':tree,'changed_files':len(elements),'browser_cases':len(report['page_cases']),'release':'v0.9.0-beta.1','release_public':False}
           pathlib.Path('site-test-results/publication-commit.json').write_text(json.dumps(result,indent=2)+'\n')
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('## Verified publication assembled\n\n```json\n'+json.dumps(result,indent=2)+'\n```\n')
           print('PUBLICATION_COMMIT='+commit)
@@ -150,7 +151,7 @@ jobs:
           PY
       - name: Keep browser evidence and generated public files
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: verified-oss-publication
           path: |
