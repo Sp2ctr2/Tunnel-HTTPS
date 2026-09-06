@@ -28,8 +28,8 @@ android {
         applicationId = "com.tunnelvpn.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.0.0"
+        versionCode = 11
+        versionName = "0.9.0-beta.1"
     }
 
     signingConfigs {
@@ -71,7 +71,6 @@ android {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
         }
     }
-
 }
 
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
