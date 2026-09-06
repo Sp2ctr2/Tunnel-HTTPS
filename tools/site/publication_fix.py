@@ -34,5 +34,22 @@ new = '''                    if page.evaluate('document.documentElement.scrollWi
                         page.screenshot(path=str(REPORT/f'overflow-{path.strip("/") or "home"}-{mode}-{width}.png'),full_page=True)
                         raise AssertionError(('horizontal page overflow', path, mode, width))'''
 source = source.replace(old, new)
+# Playwright's wait_for_function string predicate uses in-page eval. Do not add
+# unsafe-eval or bypass_csp to the application just to accommodate a test helper.
+assert source.count('page.wait_for_function(') == 3
+source = source.replace('page.wait_for_function(', 'wait_condition(page, ')
+source = source.replace('import argparse, json, os, subprocess, sys, threading', 'import argparse, json, os, subprocess, sys, threading, time')
+helper = '''def wait_condition(page, expression: str, timeout: int = 10000):
+    """Poll a fixed test expression through automation; leave page CSP enabled."""
+    deadline = time.monotonic() + timeout / 1000
+    while time.monotonic() < deadline:
+        if page.evaluate(expression):
+            return
+        page.wait_for_timeout(100)
+    raise AssertionError(('Browser condition timed out', expression))
+
+'''
+assert source.count('def run():') == 1
+source = source.replace('def run():', helper + 'def run():')
 path.write_text(source)
-print('Publication layout fixes applied; all original browser/security assertions remain enforced.')
+print('Publication layout and CSP-aware test fixes applied; all application security assertions remain enforced.')
