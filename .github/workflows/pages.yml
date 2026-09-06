@@ -2,36 +2,139 @@ name: Deploy GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, site-path-studio]
     paths:
-      - docs/**
+      - tools/experience/**
+      - .github/workflows/pages.yml
+  pull_request:
+    paths:
+      - tools/experience/**
       - .github/workflows/pages.yml
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: path-studio-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Install isolated browser and accessibility test tools
+        run: |
+          python3 -m pip install playwright==1.57.0
+          python3 -m playwright install --with-deps chromium webkit
+          sudo apt-get install -y fonts-noto-cjk
+          npm install --prefix "$RUNNER_TEMP/site-a11y" --ignore-scripts --no-audit --no-fund axe-core@4.10.3
+      - name: Read release metadata without publishing drafts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+      - name: Build deterministic bilingual pages
+        run: |
+          python3 tools/experience/build.py --output _site --releases "$RUNNER_TEMP/releases.json"
+          node --check tools/experience/boot.js
+          node --check tools/experience/site.js
+          python3 -m unittest discover -s tools/experience -p test_build.py -v
+      - name: Browser, keyboard, accessibility and strict CSP regression suite
+        run: |
+          export AXE_PATH="$RUNNER_TEMP/site-a11y/node_modules/axe-core/axe.min.js"
+          python3 tools/experience/test_site.py --root _site --browsers chromium webkit
+      - name: Preserve exact generated site, test reports and screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: path-studio-review
+          path: |
+            _site/
+            experience-test-results/
+            tools/experience/
+          retention-days: 14
+      - name: Configure Pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - name: Upload only the verified generated website
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: _site
+
   deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Check out source
-        uses: actions/checkout@v5
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-      - name: Upload site
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs
-      - name: Deploy site
+      - name: Deploy the tested artifact
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+
+  live:
+    needs: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: path-studio-review
+          path: proof
+      - name: Wait for this exact public source revision, without authentication
+        env:
+          SITE_URL: ${{ needs.deploy.outputs.url }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+          url = os.environ['SITE_URL'].rstrip('/') + '/site-manifest.json'
+          for attempt in range(18):
+              try:
+                  req = urllib.request.Request(url + '?revision=' + os.environ['GITHUB_SHA'], headers={'Cache-Control':'no-cache'})
+                  with urllib.request.urlopen(req, timeout=20) as response:
+                      manifest = json.load(response)
+                  if manifest.get('source_commit') == os.environ['GITHUB_SHA'] and manifest.get('design') == 'path-studio-20260907':
+                      print(json.dumps(manifest, indent=2))
+                      break
+              except Exception as error:
+                  print(type(error).__name__)
+              time.sleep(5)
+          else:
+              raise SystemExit('The exact deployed revision is not publicly visible')
+          PY
+      - name: Install browser for public-site verification
+        run: |
+          python3 -m pip install playwright==1.57.0
+          python3 -m playwright install --with-deps chromium
+      - name: Verify the deployed Pages site as an unauthenticated visitor
+        env:
+          SITE_URL: ${{ needs.deploy.outputs.url }}
+        run: python3 tools/experience/test_site.py --root proof/_site --report live-test-results --browsers chromium --url "$SITE_URL"
+      - name: Keep public verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: path-studio-live-verification
+          path: live-test-results/
+          retention-days: 14
