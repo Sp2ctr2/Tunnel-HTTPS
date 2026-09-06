@@ -1,0 +1,58 @@
+name: Documentation rendering
+
+on:
+  push:
+    branches: [main]
+    paths: ['**/*.md', '**/*.markdown', '**/*.html', 'tools/docs/**', '.github/workflows/documentation.yml']
+  pull_request:
+    paths: ['**/*.md', '**/*.markdown', '**/*.html', 'tools/docs/**', '.github/workflows/documentation.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: documentation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rendering:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Install documentation test dependencies
+        run: python3 -m pip install markdown-it-py==4.0.0 playwright==1.57.0
+      - name: Test the rendering checker
+        run: python3 -m unittest discover -s tools/docs -p 'test_*.py' -v
+      - name: Check every tracked Markdown and HTML document
+        run: python3 tools/docs/check_rendering.py
+      - name: Verify GitHub's native README HTML at this exact commit
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api -H 'Accept: application/vnd.github.html+json' \
+            "repos/${GITHUB_REPOSITORY}/readme?ref=${GITHUB_SHA}" \
+            > documentation-render-results/github-readme.html
+          python3 tools/docs/check_rendering.py --native-readme documentation-render-results/github-readme.html
+      - name: Install isolated diagram renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m playwright install --with-deps chromium
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/docs-mermaid" mermaid@11.12.0
+      - name: Render diagrams and exercise expandable commands
+        run: python3 tools/docs/browser_check.py --mermaid-js "$RUNNER_TEMP/docs-mermaid/node_modules/mermaid/dist/mermaid.min.js"
+      - name: Preserve rendering reports and previews
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: documentation-render-results
+          path: documentation-render-results/
+          retention-days: 7
+          if-no-files-found: ignore
