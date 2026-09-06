@@ -6,7 +6,7 @@
 
 ## On-device Android networking
 
-Tunnel HTTPS is a local Android networking engine built around \`VpnService\` and TUN. It keeps DNS policy, packet validation, selected transport handling, and connection strategy decisions on the device. It does not run a developer-operated remote VPN gateway.
+Tunnel HTTPS is a local Android networking engine built around `VpnService` and TUN. It keeps DNS policy, packet validation, selected transport handling, and connection strategy decisions on the device. It does not run a developer-operated remote VPN gateway.
 
 The repository contains the networking code, the tests, the Android app, and the evidence used to describe it. That makes it possible to inspect the path instead of taking a feature list on trust.
 
@@ -16,7 +16,7 @@ The repository contains the networking code, the tests, the Android app, and the
 
 ## What is in the box
 
-- A local \`VpnService\` and TUN packet loop
+- A local `VpnService` and TUN packet loop
 - IPv4 and IPv6 normalization, selected fragment handling, checksums, and ICMPv6 policies
 - DNS parsing, response validation, caching, encrypted DNS over HTTPS, DNS64, and NAT64 support
 - Bounded local TCP and UDP relay paths
@@ -28,7 +28,7 @@ The app can block ad and tracker domains at the DNS layer, bypass selected appli
 
 ## The path through the app
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     A[Android applications] --> B[VpnService and TUN]
     B --> C[Packet normalization]
@@ -42,7 +42,7 @@ flowchart LR
     I --> J[Destination network]
     K[Turbo policy] -. local decision .-> D
     L[Aegis shadow policy] -. observation only .-> D
-\`\`\`
+```
 
 The Android VPN interface and local policy stay on the device. Upstream sockets use the platform network stack after the repository's packet and policy layers make their decisions.
 
@@ -50,7 +50,7 @@ The Android VPN interface and local policy stay on the device. Upstream sockets 
 
 | Area | In this repository | Platform or library |
 | --- | --- | --- |
-| TUN | VPN configuration, packet loop, dispatch, lifecycle handling | Android \`VpnService\` and the OS TUN interface |
+| TUN | VPN configuration, packet loop, dispatch, lifecycle handling | Android `VpnService` and the OS TUN interface |
 | IPv4 and IPv6 | Normalization, checksums, selected fragment handling, ICMPv6 policies | The underlying Android/Linux network stack |
 | DNS | Parsing, validation, cache policy, resolver racing, DNS64, NAT64 | HTTPS transport and resolver infrastructure |
 | TCP and UDP | Bounded local relay state, forwarding decisions, cleanup, and resource limits | Upstream Android/Linux sockets |
@@ -88,13 +88,20 @@ The app does not claim absolute privacy, anonymity, universal compatibility, or 
 
 The [Releases page](https://github.com/Sp2ctr2/Tunnel-HTTPS/releases) is the planned distribution point for signed APKs. No signed production APK is published yet. Do not present a debug or test-signed build as a release.
 
-When installing a locally built APK:
-
-\`\`\`sh
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-\`\`\`
-
 Android may require approval for installations from outside the Play Store. The app requests VPN consent when it needs it. Do not disable broader device security controls.
+
+<details>
+<summary>Developer installation: install a locally built debug APK with ADB</summary>
+
+Build the debug APK first using the instructions below. With an authorized Android device or emulator connected, run this command from the repository root:
+
+```sh
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+This installs a local development build, not a signed production release.
+
+</details>
 
 ## Build from source
 
@@ -104,12 +111,21 @@ Requirements:
 - Android SDK with API 36
 - An Android device or emulator for device checks
 
-\`\`\`sh
+<details>
+<summary>Build commands and output location</summary>
+
+Run these commands from the repository root:
+
+```sh
 ./gradlew :app:assembleDebug
 ./gradlew :app:testDebugUnitTest :app:lintDebug
-\`\`\`
+```
 
-The debug APK is written to \`app/build/outputs/apk/debug/app-debug.apk\`. Local caches, generated reports, signing keys, and machine-specific settings do not belong in a public commit.
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+
+</details>
+
+Local caches, generated reports, signing keys, and machine-specific settings do not belong in a public commit.
 
 ## Evidence
 
