@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Android](https://img.shields.io/badge/platform-Android-3ddc84.svg)](https://developer.android.com/)
 
-## On-device Android networking, built unusually deep
+## On-device Android networking
 
 Tunnel HTTPS is a local Android networking engine built around \`VpnService\` and TUN. It keeps DNS policy, packet validation, selected transport handling, and connection strategy decisions on the device. It does not run a developer-operated remote VPN gateway.
 
