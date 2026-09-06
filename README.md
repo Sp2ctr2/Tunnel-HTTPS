@@ -1,75 +1,142 @@
 # Tunnel HTTPS
 
 [![Android CI](https://github.com/Sp2ctr2/Tunnel-HTTPS/actions/workflows/ci.yml/badge.svg)](https://github.com/Sp2ctr2/Tunnel-HTTPS/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Android](https://img.shields.io/badge/platform-Android-3ddc84.svg)](https://developer.android.com/)
 
-Tunnel HTTPS is a local Android VpnService and TUN utility for DNS protection, DNS-based ad and tracker blocking, selectable application bypass, and local IPv4/IPv6 connection handling.
+## On-device Android networking, built unusually deep
 
-It is not a conventional remote VPN. It does not change your public IP or apparent country, does not provide anonymity, does not decrypt HTTPS content, and does not install a user CA. Depending on the selected mode, it can inspect packet metadata locally, including addresses, ports, DNS names, and TLS ClientHello metadata such as SNI.
+Tunnel HTTPS is a local Android networking engine built around \`VpnService\` and TUN. It keeps DNS policy, packet validation, selected transport handling, and connection strategy decisions on the device. It does not run a developer-operated remote VPN gateway.
 
-## Project status
+The repository contains the networking code, the tests, the Android app, and the evidence used to describe it. That makes it possible to inspect the path instead of taking a feature list on trust.
 
-This repository is a release-facing engineering copy, not a signed production release. The code and local verification records are useful for review, but physical-device/carrier validation, final signing, policy declarations, and a public privacy-policy contact remain owner gates.
+[Explore the architecture](docs/release/01_ARCHITECTURE_AND_VPN_FLOW.md) | [Build from source](#build-from-source) | [View releases](https://github.com/Sp2ctr2/Tunnel-HTTPS/releases)
 
-## What it does
+> Current status: public beta preparation. The source is Apache-2.0 licensed. A signed production APK has not been published yet.
 
-- Creates a local Android VPN interface; protected sockets stay outside the tunnel.
-- Supports DNS-over-HTTPS resolution through supported external providers, including Cloudflare, Google, and Quad9.
-- Applies DNS-domain blocking and lets users bypass selected apps or browser traffic.
-- Handles bounded local TCP/UDP forwarding and IPv4/IPv6 paths, with fail-closed validation for unsupported or unsafe packet forms.
-- Provides local diagnostics, foreground-service status, and an optional Turbo mode that keeps keyed identifiers and performance signals on the device.
+## What is in the box
 
-## What it does not promise
+- A local \`VpnService\` and TUN packet loop
+- IPv4 and IPv6 normalization, selected fragment handling, checksums, and ICMPv6 policies
+- DNS parsing, response validation, caching, encrypted DNS over HTTPS, DNS64, and NAT64 support
+- Bounded local TCP and UDP relay paths
+- TLS ClientHello metadata inspection and adaptive fragmentation strategies
+- Structural QUIC v1/v2 classification with fail-closed handling for unsupported input
+- An on-device contextual Turbo policy and an experimental Aegis neural policy that remains shadow-only
 
-- No remote full-traffic gateway, country/IP switching, or provider-side block circumvention.
-- No HTTPS payload decryption, cookie inspection, application authentication inspection, or user certificate installation.
-- No guarantee of support across every OEM, carrier, IPv6-only/NAT64 network, MTU, UDP/443 path, or battery policy.
-- No absolute security, privacy, availability, speed, or leak-free guarantee.
+The app can block ad and tracker domains at the DNS layer, bypass selected applications, and show local diagnostics. It is not an anonymity service, an IP or country switcher, or a tool for decrypting HTTPS payloads.
 
-DNS queries may be sent over HTTPS to a third-party resolver. Those providers can receive the device public IP and request metadata. Read the network and data-flow review at docs/release/03_NETWORK_SECURITY_AND_DATA_FLOW.md, the in-app disclosure record at docs/release/07_IN_APP_DISCLOSURE.md, and the privacy-policy draft at docs/release/06_PRIVACY_POLICY_DRAFT.md before treating the app as ready for public distribution.
+## The path through the app
 
-## Install an APK
+\`\`\`mermaid
+flowchart LR
+    A[Android applications] --> B[VpnService and TUN]
+    B --> C[Packet normalization]
+    C --> D{Protocol dispatch}
+    D --> E[DNS validation and cache]
+    D --> F[TCP and UDP relay]
+    D --> G[TLS and QUIC inspection]
+    E --> H[DoH providers or system DNS]
+    F --> I[Protected upstream sockets]
+    G --> F
+    I --> J[Destination network]
+    K[Turbo policy] -. local decision .-> D
+    L[Aegis shadow policy] -. observation only .-> D
+\`\`\`
 
-If you have an APK built from this source, install it directly with Android Debug Bridge:
+The Android VPN interface and local policy stay on the device. Upstream sockets use the platform network stack after the repository's packet and policy layers make their decisions.
 
-~~~
-adb install -r /path/to/TunnelHTTPS.apk
-~~~
+## What Tunnel HTTPS implements itself
 
--r requests an in-place update and normally preserves app data. Android will reject the update when the existing installation was signed with a different key, such as a production build versus a debug or test-signed build. Do not uninstall a previous installation unless you accept losing its local settings and consent state.
+| Area | In this repository | Platform or library |
+| --- | --- | --- |
+| TUN | VPN configuration, packet loop, dispatch, lifecycle handling | Android \`VpnService\` and the OS TUN interface |
+| IPv4 and IPv6 | Normalization, checksums, selected fragment handling, ICMPv6 policies | The underlying Android/Linux network stack |
+| DNS | Parsing, validation, cache policy, resolver racing, DNS64, NAT64 | HTTPS transport and resolver infrastructure |
+| TCP and UDP | Bounded local relay state, forwarding decisions, cleanup, and resource limits | Upstream Android/Linux sockets |
+| TLS | ClientHello metadata inspection and fragmentation strategy | TLS cryptography and the remote endpoint |
+| QUIC | Structural classification and selected response validation | A complete QUIC implementation is not claimed |
+| Learning | Contextual Turbo decisions and Aegis shadow inference | Android runtime and local storage |
 
-The existing APKs and benchmark APKs in the work copy are dated build evidence, not a signed release of this localized pass. Verify the artifact's provenance and SHA-256 before installing; do not present a debug or test-signed APK as a production update.
+This distinction matters. The project does not reimplement the entire Internet stack, and it is not just a screen around a third-party VPN library.
 
-## Build locally
+## Support matrix
 
-Requirements: JDK 17, Android SDK with API 36, and a connected test device or emulator only when you choose to run device checks.
+| Area | Status | Notes |
+| --- | --- | --- |
+| IPv4 packet path | Supported | Validation and normalization are bounded |
+| IPv6 packet path | Supported, partial | Extension and fragment behavior is deliberately limited |
+| TCP relay | Partial | This is a bounded userspace relay, not a replacement for the kernel TCP stack |
+| UDP relay | Supported, bounded | Resource limits and cleanup are part of the path |
+| DNS parsing and validation | Supported | Malformed and unsafe responses fail closed |
+| DNS over HTTPS | Supported | Provider and network behavior still affect availability |
+| DNS64 and NAT64 | Supported where discoverable | IPv6-only behavior depends on network conditions |
+| TLS ClientHello | Partial | Metadata and strategy handling, not HTTPS decryption |
+| QUIC | Experimental | Structural classification, not a complete QUIC implementation |
+| Turbo | Experimental | On-device contextual policy with bounded fallback |
+| Aegis | Shadow | Neural policy observes; it does not control routing |
 
-~~~
+The detailed limits and evidence are documented in [the release notes](docs/release/RELEASE_CHECKLIST.md), [the network security review](docs/release/03_NETWORK_SECURITY_AND_DATA_FLOW.md), and [the feature claims audit](docs/release/14_FEATURE_CLAIMS_AUDIT.md).
+
+## Privacy and data flow
+
+Network metadata is processed locally to make routing and filtering decisions. Depending on the selected features, that can include DNS names, destination addresses and ports, and TLS ClientHello metadata such as SNI. DNS over HTTPS can send queries to an external provider, which may see the device IP address and request metadata.
+
+The app does not claim absolute privacy, anonymity, universal compatibility, or guaranteed connectivity. Read the [in-app disclosure record](docs/release/07_IN_APP_DISCLOSURE.md) and [privacy policy draft](docs/release/06_PRIVACY_POLICY_DRAFT.md) before treating the app as ready for public distribution.
+
+## Download and install
+
+The [Releases page](https://github.com/Sp2ctr2/Tunnel-HTTPS/releases) is the planned distribution point for signed APKs. No signed production APK is published yet. Do not present a debug or test-signed build as a release.
+
+When installing a locally built APK:
+
+\`\`\`sh
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+\`\`\`
+
+Android may require approval for installations from outside the Play Store. The app requests VPN consent when it needs it. Do not disable broader device security controls.
+
+## Build from source
+
+Requirements:
+
+- JDK 17
+- Android SDK with API 36
+- An Android device or emulator for device checks
+
+\`\`\`sh
 ./gradlew :app:assembleDebug
 ./gradlew :app:testDebugUnitTest :app:lintDebug
-~~~
+\`\`\`
 
-The debug APK is written to app/build/outputs/apk/debug/app-debug.apk. Build outputs and local caches are intentionally not source evidence. Do not commit signing keys, local.properties, emulator dumps, crash logs, or generated build/ directories.
+The debug APK is written to \`app/build/outputs/apk/debug/app-debug.apk\`. Local caches, generated reports, signing keys, and machine-specific settings do not belong in a public commit.
 
-## Evidence and limitations
+## Evidence
 
-The repository keeps dated records instead of turning one run into a product guarantee:
+The repository keeps dated records rather than turning one test run into a blanket promise:
 
-- Latest engine and measurement record: docs/release/NEXT_ENGINE_RESULTS_2026-09-05.md
-- Final release-device verification summary: tools/verification-results/2026-09-05-final-release-9a36090f/summary.json
-- Release UI validation record: tools/verification-results/2026-09-05-release-ui/release-ui-validation-2026-09-05.json
-- Network security and data-flow review: docs/release/03_NETWORK_SECURITY_AND_DATA_FLOW.md
-- Release checklist and outstanding gates: docs/release/RELEASE_CHECKLIST.md
+- [Architecture and VPN flow](docs/release/01_ARCHITECTURE_AND_VPN_FLOW.md)
+- [Network security and data flow](docs/release/03_NETWORK_SECURITY_AND_DATA_FLOW.md)
+- [IPv6 verification](docs/release/IPV6_FINAL_VERIFICATION_2026-09-03.md)
+- [Latest engine results](docs/release/NEXT_ENGINE_RESULTS_2026-09-05.md)
+- [Manual test matrix](docs/release/16_MANUAL_TEST_MATRIX.md)
+- [Release checklist](docs/release/RELEASE_CHECKLIST.md)
+- [Turbo architecture](docs/TURBO_AI_ARCHITECTURE.md)
 
-These records are tied to specific source, device, environment, and artifact snapshots. They do not establish behavior on every physical device or authorize publication. The dated report files also contain historical sections; read their dates and scope before reusing a result.
+Each record is tied to a source snapshot, environment, device, or artifact. Read the scope and date before reusing a result.
+
+## Localization
+
+Korean remains the default application language. English resources and WebView localization are included for international users. User-visible strings should be added to the appropriate Android resource or locale map, not scattered through networking code.
 
 ## Contributing
 
-See CONTRIBUTING.md. Changes to packet handling, VPN lifecycle, DNS/TLS validation, or the WebView bridge should include focused tests and must not be described as network improvements without reproducible evidence.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change. Network behavior changes need focused tests or a reproducible explanation. UI changes should cover long English labels, narrow screens, accessibility labels, and touch targets.
 
 ## Security
 
-See SECURITY.md. Do not put private vulnerability details, packet captures, keys, or personal network metadata in a public issue.
+Use the process in [SECURITY.md](SECURITY.md) for vulnerability reports. Do not publish real browsing history, private domains, packet captures, credentials, or signing material in an issue or pull request.
 
-## License and third-party notices
+## License
 
-This work copy does not yet contain a project license grant. The repository owner must choose and add LICENSE before publishing it as an open-source project or accepting reusable contributions. Until then, source redistribution rights are not granted by this README. Dependency notices are in THIRD_PARTY_NOTICES.md.
+Tunnel HTTPS is released under the [Apache License 2.0](LICENSE). Third-party notices and data provenance are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

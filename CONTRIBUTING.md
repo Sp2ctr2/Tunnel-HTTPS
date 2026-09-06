@@ -34,4 +34,4 @@ Reviewers may request a smaller patch when a change mixes productization, protoc
 
 ## License
 
-This repository does not yet include a project license. Until the owner adds one, contributions are accepted for review but are not automatically granted permission for reuse or redistribution.
+The project is released under the Apache License 2.0. Unless a file says otherwise, contributions and documentation in this repository are covered by that license. Check THIRD_PARTY_NOTICES.md before reusing bundled data or other third-party material.
