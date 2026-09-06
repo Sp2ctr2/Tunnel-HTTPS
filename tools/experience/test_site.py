@@ -90,7 +90,7 @@ class Quiet(SimpleHTTPRequestHandler):
         pass
 
 def browser_checks(root: Path, report_dir: Path, engines: list[str], base_url: str | None) -> dict:
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import sync_playwright, expect
     server = None
     if not base_url:
         server = ThreadingHTTPServer(('127.0.0.1',0),partial(Quiet,directory=str(root.resolve())))
@@ -177,7 +177,7 @@ def browser_checks(root: Path, report_dir: Path, engines: list[str], base_url: s
                     assert page.evaluate('document.documentElement.dataset.motion') == 'off'
                     result['interactions'].append({'engine':engine,'test':'navigation, browser back, theme/motion persistence and hero tabs','status':'PASS'})
                     page.keyboard.press('Control+k')
-                    assert page.locator('#search-dialog').is_visible()
+                    expect(page.locator('#search-dialog')).to_be_visible()
                     page.locator('#search-input').fill('DNS')
                     assert page.locator('.search-items li:visible').count() == 1
                     page.keyboard.press('ArrowDown'); page.keyboard.press('Enter')
@@ -193,13 +193,13 @@ def browser_checks(root: Path, report_dir: Path, engines: list[str], base_url: s
                     assert page.locator('#search-empty').is_visible()
                     assert page.locator('#search-dialog img').count() == 0
                     page.keyboard.press('Escape')
-                    assert not page.locator('#search-dialog').is_visible()
+                    expect(page.locator('#search-dialog')).not_to_be_visible()
                     result['interactions'].append({'engine':engine,'test':'command palette, same-page links, keyboard search, empty state and no HTML injection','status':'PASS'})
                     page.goto(base_url+'guide/')
                     page.locator('summary').filter(has_text='Clone, build').click()
                     assert page.locator('#build-code').is_visible()
                     page.locator('[data-copy="build-code"]').click()
-                    assert page.locator('.toast').is_visible()
+                    expect(page.locator('.toast')).to_be_visible(timeout=10000)
                     data = b'Tunnel HTTPS checksum regression fixture\n'
                     digest = hashlib.sha256(data).hexdigest()
                     page.locator('#expected-hash').fill(digest)
@@ -270,6 +270,8 @@ def browser_checks(root: Path, report_dir: Path, engines: list[str], base_url: s
     except Exception as error:
         result['status'] = 'FAIL'
         result['error'] = str(error)
+        import traceback
+        result['traceback'] = traceback.format_exc()
         raise
     finally:
         (report_dir/'browser-report.json').write_text(json.dumps(result,indent=2)+'\n')
