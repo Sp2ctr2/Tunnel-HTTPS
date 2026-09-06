@@ -1,0 +1,106 @@
+name: Signed beta Android install smoke
+on:
+  push:
+    branches: [beta-install-verification]
+    paths: [.github/workflows/beta-install-smoke.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: beta-install-smoke
+  cancel-in-progress: false
+jobs:
+  smoke:
+    if: github.repository == 'Sp2ctr2/Tunnel-HTTPS' && github.ref_name == 'beta-install-verification'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+      - name: Download the exact previously signed artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/beta-apk" smoke-results
+          gh release download v0.9.0-beta.1 --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/beta-apk" --pattern 'TunnelHTTPS-0.9.0-beta.1.apk'
+          echo "90678bd343ee1359d08ac23ce05ba414897a58e03b68e17fca285e29ff6121a4  $RUNNER_TEMP/beta-apk/TunnelHTTPS-0.9.0-beta.1.apk" | sha256sum -c -
+      - name: Install a bounded Android 15 emulator environment
+        run: |
+          set -euo pipefail
+          test -e /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          sdkmanager 'emulator' 'platform-tools' 'system-images;android-35;google_apis;x86_64'
+          printf 'no\n' | avdmanager create avd --force --name tunnel-beta-smoke --package 'system-images;android-35;google_apis;x86_64'
+      - name: Install and cold-launch the non-debuggable release
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,re,subprocess,time,xml.etree.ElementTree as ET
+          root=pathlib.Path.cwd(); out=root/'smoke-results'; sdk=pathlib.Path(os.environ['ANDROID_HOME'])
+          apk=pathlib.Path(os.environ['RUNNER_TEMP'])/'beta-apk/TunnelHTTPS-0.9.0-beta.1.apk'
+          adb=str(sdk/'platform-tools/adb'); pkg='com.tunnelvpn.app'
+          def call(*args,check=True,timeout=45):
+              return subprocess.run([adb,'-s','emulator-5554',*args],capture_output=True,text=True,check=check,timeout=timeout)
+          log=(out/'emulator.log').open('w')
+          emu=subprocess.Popen([str(sdk/'emulator/emulator'),'-avd','tunnel-beta-smoke','-port','5554','-no-window','-no-audio','-no-boot-anim','-no-snapshot','-gpu','swiftshader_indirect','-accel','on','-memory','2048','-cores','2'],stdout=log,stderr=subprocess.STDOUT)
+          try:
+              deadline=time.monotonic()+240
+              while time.monotonic()<deadline:
+                  if emu.poll() is not None: raise RuntimeError('Emulator exited before boot')
+                  p=call('shell','getprop','sys.boot_completed',check=False,timeout=10)
+                  if p.returncode==0 and p.stdout.strip()=='1': break
+                  time.sleep(3)
+              else: raise RuntimeError('Emulator boot exceeded 240 seconds')
+              call('shell','input','keyevent','82')
+              for setting in ['window_animation_scale','transition_animation_scale','animator_duration_scale']:
+                  call('shell','settings','put','global',setting,'0')
+              assert 'Success' in call('install','--no-streaming',str(apk),timeout=120).stdout
+              package=call('shell','dumpsys','package',pkg).stdout
+              assert 'versionCode=11' in package and 'versionName=0.9.0-beta.1' in package
+              flags='\n'.join(s for s in package.splitlines() if 'flags=[' in s or 'pkgFlags=[' in s)
+              assert 'DEBUGGABLE' not in flags, 'Expected non-debuggable release'
+              launches=[]
+              for i in range(3):
+                  call('shell','am','force-stop',pkg)
+                  call('logcat','-c')
+                  result=call('shell','am','start','-W','-n',pkg+'/.MainActivity').stdout
+                  time.sleep(9)
+                  pid=call('shell','pidof',pkg).stdout.strip()
+                  assert pid and 'Status: ok' in result, 'Application did not survive cold launch'
+                  crash=call('logcat','-b','crash','-d').stdout
+                  assert not (pkg in crash and 'FATAL EXCEPTION' in crash), 'Release app crashed'
+                  launches.append({'cycle':i+1,'status':'PASS','pid_present':True})
+              call('shell','uiautomator','dump','/sdcard/tunnel-smoke.xml',timeout=60)
+              xml=call('shell','cat','/sdcard/tunnel-smoke.xml').stdout
+              nodes=list(ET.fromstring(xml).iter('node'))
+              assert any(n.get('package')==pkg for n in nodes), 'App is not the visible foreground UI'
+              texts=[n.get('text') for n in nodes if n.get('text')]
+              (out/'release-ui.xml').write_text(xml)
+              (out/'release-ui-text.json').write_text(json.dumps(texts,ensure_ascii=False,indent=2)+'\n')
+              with (out/'release-android35.png').open('wb') as f:
+                  subprocess.run([adb,'-s','emulator-5554','exec-out','screencap','-p'],stdout=f,check=True,timeout=30)
+              report={'status':'PASS','artifact':apk.name,'apk_sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),'api':35,'image':'google_apis/x86_64','non_debuggable':True,'cold_launches':launches,'ui_nodes':len(nodes),'visible_text_nodes':len(texts),'scope':'Exact signed APK install and foreground cold-launch smoke on an Android emulator. Does not certify VPN traffic, carrier compatibility, physical hardware or long-run stability.'}
+              (out/'android-install-smoke.json').write_text(json.dumps(report,indent=2)+'\n')
+              print(json.dumps(report,indent=2))
+          finally:
+              try: call('emu','kill',check=False,timeout=10)
+              except Exception: pass
+              emu.terminate()
+              log.close()
+          PY
+      - name: Preserve emulator evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: signed-beta-android35-smoke
+          path: smoke-results/
+          retention-days: 14
+          if-no-files-found: warn
