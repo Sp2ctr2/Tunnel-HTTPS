@@ -1,20 +1,21 @@
-/* An original CPU-rendered conduit, not a network measurement. No WebGL dependency. */
+/* Original conduit geometry. Native GPU shading with a Canvas fallback; no 3D library. */
 (() => {
   'use strict';
   const canvas = document.getElementById('conduit');
   if (!canvas) return;
-  const ctx = canvas.getContext('2d', { alpha: true });
-  if (!ctx) return;
+  let gl;
+  try { gl=canvas.getContext('webgl',{alpha:true,antialias:true,premultipliedAlpha:false,powerPreference:'low-power'}); } catch (_) {}
+  const ctx=gl?null:canvas.getContext('2d',{alpha:true});
+  if(!gl&&!ctx)return;
   const stage = canvas.parentElement;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   let width=600,height=610,ratio=1,frame=0,angle=.12,target=.12,tilt=.02,targetTilt=.02;
-  let visible=true, pointer=false, start=0;
+  let visible=true,gpu=null,lost=false;
   const faces=[];
   const norm=a=>{const d=Math.hypot(...a)||1;return a.map(v=>v/d)};
   const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
   const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
   function center(t) {
-    // A continuous arch with unequal legs; the shape echoes the tunnel opening.
     const theta = -0.39 + t * 3.92;
     return [Math.cos(theta)*1.13, Math.sin(theta)*1.35-.35, Math.sin(theta*1.3)*.28];
   }
@@ -34,7 +35,7 @@
   function surface(rings,invert=false){
     for(let i=0;i<144;i++) for(let j=0;j<64;j++) {
       const pts=[rings[i][j],rings[i+1][j],rings[i+1][j+1],rings[i][j+1]];
-      faces.push({p:pts.map(v=>v.p),n:norm(pts.reduce((a,v)=>a.map((x,k)=>x+v.n[k]),[0,0,0])).map(v=>invert?-v:v),inside:invert});
+      faces.push({p:pts.map(v=>v.p),normals:pts.map(v=>v.n.map(x=>invert?-x:x)),n:norm(pts.reduce((a,v)=>a.map((x,k)=>x+v.n[k]),[0,0,0])).map(v=>invert?-v:v),inside:invert});
     }
   }
   surface(outer);surface(inner,true);
@@ -49,8 +50,43 @@
     const yy=y*Math.cos(rx)-z*Math.sin(rx);z=y*Math.sin(rx)+z*Math.cos(rx);return [x,yy,z];
   }
   const light=norm([-1,1.7,2.8]),half=norm([-1,1.7,5.8]);
+  function initGPU(){
+    if(!gl)return;
+    const vs=`attribute vec3 position;attribute vec3 normal;attribute vec3 material;
+      uniform mat3 rotation;uniform vec2 scale;varying vec3 N;varying vec3 P;varying vec3 M;
+      void main(){P=rotation*position;N=rotation*normal;M=material;
+        float w=5.8-P.z;gl_Position=vec4(P.x*scale.x*5.8,P.y*scale.y*5.8+.08*w,1.01005*w-.201005,w);}`;
+    const fs=`precision highp float;varying vec3 N;varying vec3 P;varying vec3 M;
+      void main(){vec3 n=normalize(N);vec3 v=normalize(vec3(0.,0.,5.8)-P);
+        vec3 l=normalize(vec3(-1.,1.7,2.8));vec3 h=normalize(l+v);
+        float d=.16+.92*max(dot(n,l),0.);float spec=pow(max(dot(n,h),0.),85.)*.5;
+        float edge=pow(1.-max(dot(n,v),0.),4.)*.085;
+        vec3 c=M*d+vec3(.88,.93,1.)*spec+vec3(.19,.3,.85)*edge;
+        gl_FragColor=vec4(pow(max(c,vec3(0.)),vec3(.454545)),1.);}`;
+    function shader(type,source){const sh=gl.createShader(type);gl.shaderSource(sh,source);gl.compileShader(sh);if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)){gl.deleteShader(sh);throw new Error('shader')}return sh}
+    const vertex=shader(gl.VERTEX_SHADER,vs),fragment=shader(gl.FRAGMENT_SHADER,fs),program=gl.createProgram();
+    gl.attachShader(program,vertex);gl.attachShader(program,fragment);gl.linkProgram(program);gl.deleteShader(vertex);gl.deleteShader(fragment);
+    if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error('program');
+    const data=[];
+    for(const face of faces){const material=face.rim?[.4,.51,.8]:face.inside?[.002,.012,.13]:[.008,.045,.74];
+      for(const i of [0,1,2,0,2,3])data.push(...face.p[i],...(face.normals?face.normals[i]:face.n),...material)}
+    gl.useProgram(program);const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);
+    ['position','normal','material'].forEach((name,i)=>{const at=gl.getAttribLocation(program,name);gl.enableVertexAttribArray(at);gl.vertexAttribPointer(at,3,gl.FLOAT,false,36,i*12)});
+    gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.clearColor(0,0,0,0);
+    gpu={program,count:data.length/9,rotation:gl.getUniformLocation(program,'rotation'),scale:gl.getUniformLocation(program,'scale')};
+  }
+  try{initGPU()}catch(_){gl=null;canvas.hidden=true;document.querySelector('[data-object-rotate]')?.setAttribute('hidden','');return}
+  canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();lost=true;stage.classList.remove('object-ready');if(frame)cancelAnimationFrame(frame);frame=0});
+  canvas.addEventListener('webglcontextrestored',()=>{try{lost=false;initGPU();resize()}catch(_){lost=true;stage.classList.remove('object-ready')}});
   function draw(){
-    if(width<1||height<1)return;
+    if(width<1||height<1||lost)return;
+    if(gpu){
+      const scale=Math.min(width/3.64,height/3.55);
+      gl.viewport(0,0,canvas.width,canvas.height);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(gpu.program);
+      gl.uniformMatrix3fv(gpu.rotation,false,new Float32Array([...rotate([1,0,0]),...rotate([0,1,0]),...rotate([0,0,1])]));
+      gl.uniform2f(gpu.scale,scale*2/width,scale*2/height);gl.drawArrays(gl.TRIANGLES,0,gpu.count);
+      canvas.dataset.ready='true';canvas.dataset.renderer='webgl';stage.classList.add('object-ready');return;
+    }
     ctx.setTransform(ratio,0,0,ratio,0,0);ctx.clearRect(0,0,width,height);
     const scale=Math.min(width/3.64,height/3.55);
     const rendered=[];
@@ -71,9 +107,9 @@
     for(const f of rendered){
       ctx.beginPath();f.pts.forEach((p,i)=>{const k=5.8/(5.8-p[2]);const x=width*.5+p[0]*scale*k,y=height*.46-p[1]*scale*k;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.closePath();ctx.fillStyle=f.color;ctx.strokeStyle=f.color;ctx.lineWidth=1.2;ctx.fill();ctx.stroke();
     }
-    canvas.dataset.ready='true';stage.classList.add('object-ready');
+    canvas.dataset.ready='true';canvas.dataset.renderer='canvas';stage.classList.add('object-ready');
   }
-  function tick(now){
+  function tick(){
     frame=0;if(!visible||document.hidden)return;
     angle+=(target-angle)*.13;tilt+=(targetTilt-tilt)*.13;draw();
     if(Math.abs(target-angle)>.0008||Math.abs(targetTilt-tilt)>.0008) frame=requestAnimationFrame(tick);
