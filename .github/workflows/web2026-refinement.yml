@@ -1,0 +1,125 @@
+name: Website accessibility refinement
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/web2026-refinement.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  refine:
+    if: github.repository == 'Sp2ctr2/Tunnel-HTTPS' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: true
+          fetch-depth: 1
+      - name: Correct the important-rule layer ordering without weakening hidden states
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path=Path('tools/web2026/site.css')
+          source=path.read_text()
+          marker='/* No-JavaScript mobile navigation: retain the reset-layer important priority. */'
+          if marker not in source:
+              source=source.rstrip()+'\n'+marker+'\n@layer reset {@media(max-width:680px){html:not([data-enhanced]) .mobile-nav[hidden]{display:block!important}}}\n'
+              path.write_text(source)
+          PY
+      - name: Build current public pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/web2026/build.py --resolve-release
+      - name: Install browser test tools
+        run: |
+          python3 -m pip install playwright==1.57.0
+          python3 -m playwright install --with-deps chromium
+      - name: Check syntax and all browser assertions
+        run: |
+          set -euo pipefail
+          node --check docs/assets/web2026/site.js
+          node --check docs/assets/web2026/theme.js
+          node --check docs/assets/web2026/release.js
+          python3 tools/web2026/test_site.py
+      - name: Commit only verified presentation changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git add -- docs/ tools/web2026/site.css
+          python3 - <<'PY'
+          import subprocess
+          allowed={'docs/index.html','docs/engineering/index.html','docs/guide/index.html','docs/privacy/index.html','docs/404.html','docs/.nojekyll','tools/web2026/site.css'}
+          changes=subprocess.check_output(['git','diff','--cached','--name-only','-z']).decode().split('\0')
+          assert all(p in allowed or p.startswith('docs/assets/web2026/') for p in changes if p),changes
+          subprocess.run(['git','diff','--exit-code','--','app/','gradle/','build.gradle.kts','settings.gradle.kts','gradle.properties'],check=True)
+          PY
+          git diff --cached --check
+          current="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          test "$current" = "$(git rev-parse HEAD)" || { echo 'Concurrent update detected. Rerun against main; no branch will be overwritten.'; exit 1; }
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'Ship interactive website with verified responsive navigation and reduced-motion UX'
+            git push origin HEAD:main
+          fi
+          echo "WEBSITE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: docs
+      - name: Deploy verified website
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+      - name: Check the actual public site without authentication
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,time,urllib.request
+          base=os.environ['PAGE_URL'].rstrip('/')+'/'
+          routes={'':'index.html','engineering/':'engineering/index.html','guide/':'guide/index.html','privacy/':'privacy/index.html','assets/web2026/site.css':'assets/web2026/site.css','assets/web2026/site.js':'assets/web2026/site.js'}
+          passed=[]
+          for route,path in routes.items():
+              expected=hashlib.sha256((pathlib.Path('docs')/path).read_bytes()).hexdigest()
+              for attempt in range(18):
+                  try:
+                      request=urllib.request.Request(base+route+'?revision='+os.environ['GITHUB_SHA'][:12],headers={'User-Agent':'TunnelHTTPS-anonymous-site-check','Cache-Control':'no-cache'})
+                      with urllib.request.urlopen(request,timeout=20) as response: body=response.read(2*1024*1024)
+                      if hashlib.sha256(body).hexdigest()==expected:
+                          passed.append({'url':base+route,'sha256':expected,'status':'PASS'})
+                          break
+                  except Exception:
+                      pass
+                  time.sleep(5)
+              else: raise SystemExit('Published bytes did not match: '+route)
+          report={'status':'PASS','website_url':base,'website_commit':os.environ['WEBSITE_COMMIT'],'anonymous_routes':passed,'scope':'Website publication, not Android runtime or physical-device certification.'}
+          pathlib.Path('web2026-test-results/publication.json').write_text(json.dumps(report,indent=2)+'\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as summary:
+              summary.write('## Published and anonymously verified\n\n'+base+'\n\nWebsite commit: `'+report['website_commit']+'`\n\nAll four routes and both primary CSS/JavaScript assets match the tested build.\n')
+          print(json.dumps(report,indent=2))
+          PY
+      - name: Preserve screenshots, interaction checks and deployment evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: web2026-refinement-evidence
+          path: |
+            web2026-test-results/
+            docs/assets/web2026/build.json
+          retention-days: 14
+          if-no-files-found: warn
