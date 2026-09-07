@@ -1,39 +1,41 @@
-# Conduit — Tunnel HTTPS website
+# Product-first website
 
-The public website is generated from this directory, not from `docs/index.html` or the retired `tools/web2026` design. The Android app and its signing identity are outside this change.
+The maintained site lives in `website/product/`. The prior Conduit/GPU renderer has been removed, not overlaid with more CSS.
 
-## Design direction
+## Design
 
-A light, cobalt-blue product showroom built around one subject-specific object: a hollow conduit that echoes the tunnel opening. The object is an original interactive Canvas renderer. It is not live network telemetry or a screenshot of the Android app. The rest of the composition is deliberately quiet: short descriptions, direct links and four distinct scenes. No acid-green dashboard, orbiting chip, badge wall, decorative counters or repeated feature-card grid.
+The first screen presents the actual Android interface. There are no abstract hero objects, decorative network shapes, background grids, animated statistics, or repeated feature-card decks. White, charcoal, neutral surfaces and restrained amber references to the real app replace the prior cobalt identity. The optional dark theme uses neutral grays.
 
-The primary views are Product, Inside, Get Tunnel and Boundaries. Each has an English and Korean URL. Navigation is a two-phase shutter transition, not a disguised scroll or wheel hijack. Keyboard focus, browser history, reduced motion, direct links and no-JavaScript content are preserved.
+The app screen selector and full-screen image viewer are real controls. Screenshots come from `app/src/main/assets/index.html`, rendered disconnected without a native bridge. The page labels them as source-interface previews, not live traffic or Android acceptance tests.
+
+Technical content has its own reading view: native hash links, keyboard-selectable topics, explicit implementation/platform boundaries, source links, and a searchable support table. Installation has a local SHA-256 tool, validation states and collapsed developer commands. A matching checksum is not Android signature validation.
+
+## Navigation
+
+Pages have ordinary HTML addresses and native anchors. Cross-document View Transitions add a short optical dissolve where supported; no sideward page motion, swipe requirement, SPA route interception or scroll hijacking is used. Native back/forward, modifier clicks and direct URLs keep working. Reduced motion disables transitions. English and Korean each have four routes.
+
+## Build
+
+The single maintained `.github/workflows/pages.yml` builds from this directory and captures the unmodified app UI. It tests the resulting artifact, deploys that exact artifact on main, and verifies normal public URLs anonymously. Branch and pull-request runs test without deployment.
+
+```sh
+python3 website/product/build.py --output _site --resolve-release
+python3 website/product/capture.py --output _site/media
+python3 website/product/test_site.py --root _site --out product-review
+```
+
+Capture and browser tests require Playwright with Chromium. Accessibility tests use axe when `AXE_PATH` points at axe.min.js. Screenshots include `media/provenance.json` with the app-source checksum and capture scope.
+
+Public release lookup is unauthenticated, excludes drafts and unpublished metadata, and accepts only this repository's release URLs. No API token enters the website. A missing public APK produces a Releases/source-build path, not a fabricated download button.
+
+CSS and JavaScript filenames are content-hashed. The browser loads no external fonts, analytics, runtime packages or remote scripts. The checksum file never uploads. No-JavaScript pages remain readable and navigable; the browser-only checksum tool is disabled with a local-tool alternative.
 
 ## References reviewed
 
-- Anthropic frontend-design skill: https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md — read revision `a5333457c414d20d625f307df945842c0952ecc3`. The design follows subject-specific visual identity, one deliberate focal point, non-templated typography and screenshot-based critique.
-- Vercel Web Interface Guidelines: https://github.com/vercel-labs/web-interface-guidelines/blob/main/command.md — read revision `e1e8e3460db7c1440e34642c4f7b885185ca5366`. Used for semantics, focus, touch targets, reduced motion, async feedback and stateful URLs.
-- basement.studio's real website: https://github.com/basementstudio/website-2k25 — reviewed its camera-transition implementation to study stateful scene changes and user-triggered spatial response, not to copy its identity or code.
-- Swup accessibility and parallel-transition references: https://github.com/swup/a11y-plugin and https://github.com/swup/parallel-plugin — reviewed the separation of scene replacement, focus restoration and transition choreography. Swup is not a runtime dependency.
+- anthropics/skills: frontend-design guidance, subject-led design rather than stock visual templates.
+- vercel-labs/web-interface-guidelines: native semantics, keyboard access, readable forms, focus and reduced motion.
+- vercel-labs/open-agents: web-animation-design guidance on purposeful, short interaction feedback.
+- MDN View Transition API: progressively enhanced native page navigation.
+- Signal and Tailscale Android download pages: product-centered installation hierarchy; no copied assets or markup.
 
-No downloaded skill scripts or third-party website code run in this project. These were research references. The maintained implementation uses native browser APIs and a standard-library Python builder.
-
-## Build and review
-
-Run from the repository root:
-
-```sh
-python3 website/build.py --output _site --resolve-release
-python3 -m pip install playwright==1.57.0
-python3 -m playwright install chromium
-python3 website/test_site.py --root _site
-```
-
-`--resolve-release` queries public GitHub metadata without a token. Drafts and unsigned/debug-named artifacts are not advertised. If no public APK is found, the site links to Releases and explicitly labels the source as available instead of inventing a working download. The website does not certify APK signatures.
-
-CSS and JavaScript assets are content-hashed. The only publisher is `.github/workflows/pages.yml`. It builds `_site`, runs 64 layout combinations, 16 accessibility audits and interaction tests, deploys that exact artifact, then compares 13 ordinary public URLs/assets byte-for-byte and exercises the live pages again. Test outputs and screenshots remain Actions artifacts rather than cluttering Git history.
-
-## Accessibility and privacy
-
-Manrope and Noto Sans KR load from Google Fonts with local fallbacks. Font delivery is disclosed on the Boundaries page. There is no analytics, upload endpoint, third-party runtime JavaScript or network-testing widget. CSP permits only the local scripts and the explicit font origins. The SHA-256 calculator reads at most 128 MiB locally. It distinguishes a checksum match from signature verification and malware scanning.
-
-Motion is user-triggered or finite. The conduit redraws only when its orientation changes and stops off-screen or in a hidden tab. Reduced-motion users get immediate scene changes and static object updates.
+These are design references, not runtime dependencies. Android source, package configuration and signing material are outside the website deployment's scope.
