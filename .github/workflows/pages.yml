@@ -1,33 +1,22 @@
 name: Deploy GitHub Pages
-
 on:
   push:
     branches: [main]
-    paths:
-      - 'tools/web2026/**'
-      - 'docs/**'
-      - '.github/workflows/pages.yml'
+    paths: ['website/**', '.github/workflows/pages.yml']
   pull_request:
-    paths:
-      - 'tools/web2026/**'
-      - 'docs/**'
-      - '.github/workflows/pages.yml'
+    paths: ['website/**', '.github/workflows/pages.yml']
   release:
     types: [published]
   workflow_dispatch:
-
 permissions:
   contents: read
-
-# One publisher, one queue. Never interrupt an in-flight Pages deployment.
 concurrency:
   group: pages
   cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     permissions:
       contents: read
       pages: read
@@ -35,56 +24,45 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
-      - name: Build from the maintained design sources, not the old static page
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
+      - name: Build Conduit from the authored website sources
         run: |
-          set -euo pipefail
-          python3 tools/web2026/build.py --resolve-release
-          python3 - <<'PY'
-          import json,os,pathlib
-          version={'design':'interactive-web2026','source_commit':os.environ['GITHUB_SHA'],'run_id':os.environ['GITHUB_RUN_ID']}
-          pathlib.Path('docs/site-version.json').write_text(json.dumps(version,indent=2)+'\n')
-          for route in ('index.html','engineering/index.html','guide/index.html','privacy/index.html'):
-              html=(pathlib.Path('docs')/route).read_text()
-              assert 'assets/web2026/site.js' in html, 'Old design entered the deployment: '+route
-          PY
-          node --check docs/assets/web2026/site.js
-          node --check docs/assets/web2026/theme.js
-          node --check docs/assets/web2026/release.js
-      - name: Install browser test tools
+          python3 website/build.py --output _site --resolve-release
+          node --check website/app.js
+          node --check website/object.js
+          node --check website/boot.js
+      - name: Install isolated browser and accessibility tools
         run: |
           python3 -m pip install playwright==1.57.0
           python3 -m playwright install --with-deps chromium
-      - name: Test all 40 layouts, interaction flows and security assertions
-        run: python3 tools/web2026/test_site.py
-      - name: Preserve the exact tested public site
+          npm install --prefix "$RUNNER_TEMP/conduit-axe" --ignore-scripts --no-audit --no-fund axe-core@4.10.3
+      - name: Verify both languages, themes, responsive layouts and real interactions
+        run: |
+          export AXE_PATH="$RUNNER_TEMP/conduit-axe/node_modules/axe-core/axe.min.js"
+          python3 website/test_site.py --root _site --out conduit-results
+      - name: Preserve the exact tested website
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: verified-site
-          path: docs/
+          name: verified-conduit-site
+          path: _site/
           include-hidden-files: true
           retention-days: 7
-      - name: Preserve browser regression evidence
+      - name: Preserve browser and accessibility evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: site-browser-tests
-          path: web2026-test-results/
+          name: conduit-review
+          path: conduit-results/
           retention-days: 7
-      - name: Configure Pages
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
-      - name: Upload the tested Pages artifact
+      - name: Upload the tested Conduit artifact, never the legacy docs HTML
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
         with:
-          path: docs
-
+          path: _site
   deploy:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -96,44 +74,33 @@ jobs:
     outputs:
       page_url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy the exact tested artifact
+      - name: Deploy the exact tested website
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
-
   live:
     needs: deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
-          name: verified-site
-          path: docs
+          name: verified-conduit-site
+          path: _site
       - name: Install the anonymous verification browser
         run: |
           python3 -m pip install playwright==1.57.0
           python3 -m playwright install --with-deps chromium
-      - name: Verify live bytes, real routes and interactive navigation
+      - name: Check the normal public URLs, asset hashes and interactions
         env:
           PAGE_URL: ${{ needs.deploy.outputs.page_url }}
-        run: python3 tools/web2026/verify_publication.py --url "$PAGE_URL"
-      - name: Preserve live screenshots and publication proof
+        run: python3 website/test_site.py --root _site --out conduit-live --url "$PAGE_URL"
+      - name: Preserve real public screenshots and publication proof
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: live-publication-proof
-          path: |
-            web2026-test-results/live/
-            docs/site-version.json
+          name: conduit-live-proof
+          path: conduit-live/
           retention-days: 14
-      - name: Report verified publication
-        if: success()
-        env:
-          PAGE_URL: ${{ needs.deploy.outputs.page_url }}
-        run: |
-          printf '## Public website verified\n\n%s\n\nSource commit: `%s`\n\n9 anonymous URL/asset checks, 12 live viewport captures and 3 live explorer checks passed.\n' "$PAGE_URL" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
