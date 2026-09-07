@@ -1,0 +1,52 @@
+name: Studio reference review
+on:
+  push:
+    branches: [site-studio-v3]
+    paths: ['.github/workflows/studio-reference.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  references:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Install isolated browser
+        run: |
+          python3 -m pip install playwright==1.57.0
+          python3 -m playwright install --with-deps chromium
+      - name: Record public visual references without credentials
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          from playwright.sync_api import sync_playwright
+          out=Path('studio-reference');out.mkdir()
+          results=[]
+          with sync_playwright() as p:
+              browser=p.chromium.launch()
+              for label,url in [('linear','https://linear.app/'),('resend','https://resend.com/'),('before','https://sp2ctr2.github.io/Tunnel-HTTPS/')]:
+                  page=browser.new_page(viewport={'width':1440,'height':1000},device_scale_factor=1)
+                  try:
+                      response=page.goto(url,wait_until='domcontentloaded',timeout=45000)
+                      page.wait_for_timeout(2200)
+                      page.screenshot(path=str(out/(label+'.png')))
+                      results.append({'name':label,'url':url,'status':response.status if response else None})
+                  except Exception as e:
+                      results.append({'name':label,'url':url,'error':type(e).__name__})
+                  page.close()
+              browser.close()
+          (out/'references.json').write_text(json.dumps(results,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: studio-reference
+          path: |
+            studio-reference/
+            tools/web2026/
+            docs/
+          retention-days: 7
