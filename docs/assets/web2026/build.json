@@ -1,0 +1,16 @@
+{
+  "site_revision": "be52b45f6042e5d0b6fd59be6986064500689026",
+  "routes": [
+    "index.html",
+    "engineering/index.html",
+    "guide/index.html",
+    "privacy/index.html"
+  ],
+  "runtime_dependencies": 0,
+  "release": {
+    "published": false,
+    "url": "https://github.com/Sp2ctr2/Tunnel-HTTPS/releases",
+    "verification_scope": "No public release was verified during this build."
+  },
+  "scope": "Website presentation and interactive explanatory UI; no changes to Android runtime or signing identity."
+}

@@ -1,0 +1,2 @@
+'use strict';
+(()=>{let theme='dark',motion='running';try{const saved=localStorage.getItem('tunnel2026.theme');if(saved==='dark'||saved==='light')theme=saved;else if(matchMedia('(prefers-color-scheme: light)').matches)theme='light';if(localStorage.getItem('tunnel2026.motion')==='paused')motion='paused';}catch(_){}if(matchMedia('(prefers-reduced-motion: reduce)').matches)motion='paused';document.documentElement.dataset.theme=theme;document.documentElement.dataset.motion=motion;})();

@@ -120,7 +120,7 @@ def run():
                 page.locator('summary').filter(has_text='Build and test locally').click()
                 assert page.locator('#developer pre').first.is_visible()
                 page.locator('#developer .copy-code').first.click()
-                assert page.locator('#toast').is_visible()
+                wait(page, '(() => { const t=document.querySelector("#toast"); return !t.hidden && /^(Copied\\.|Text selected\\.)/.test(t.textContent); })()')
                 report['interactions'].append('Collapsed developer commands and safe copy feedback')
                 page.locator('#apk-file').set_input_files({'name': 'synthetic-negative.apk', 'mimeType': 'application/vnd.android.package-archive', 'buffer': b'not-a-release-apk'})
                 wait(page, '!!document.querySelector("#hash-result").dataset.result')

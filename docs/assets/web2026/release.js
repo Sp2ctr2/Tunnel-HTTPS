@@ -1,0 +1,2 @@
+'use strict';
+window.TUNNEL_RELEASE = Object.freeze({"published":false,"url":"https://github.com/Sp2ctr2/Tunnel-HTTPS/releases","verification_scope":"No public release was verified during this build."});

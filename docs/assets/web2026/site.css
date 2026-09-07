@@ -11,3 +11,6 @@
 }
 /* No-JavaScript mobile navigation: retain the reset-layer important priority. */
 @layer reset {@media(max-width:680px){html:not([data-enhanced]) .mobile-nav[hidden]{display:block!important}}}
+
+@media (max-width:680px){html:not([data-enhanced]) .mobile-nav[hidden]{display:block!important}html:not([data-enhanced]) .menu-toggle{display:none}}
+@media (forced-colors:active){.button,.feature-card,.core-chip,.scope-tag,.path-stop{border:1px solid ButtonText}.path-particle,.orbit{display:none}}
