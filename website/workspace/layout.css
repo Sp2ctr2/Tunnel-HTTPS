@@ -1,0 +1,13 @@
+/* Intrinsic sizing keeps a short viewport from compressing the hero into its footer. */
+.overview-layout { flex: 1 0 auto; }
+@media (min-width: 761px) and (max-height: 840px) {
+  .pane-home { gap: 18px; }
+  .overview-foot { display: none; }
+  .pane-home .overview-layout { min-height: min-content; }
+  .pane-home .connection-stage { padding: 13px; }
+  .pane-home .stage-heading { padding-bottom: 10px; }
+  .pane-home .console-bar { padding-block: 12px; }
+  .pane-home .preview-path li { min-height: 53px; }
+  .pane-home .console-actions { padding-block: 8px; }
+  .pane-home .stage-note { padding-top: 10px; }
+}
