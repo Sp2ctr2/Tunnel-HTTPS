@@ -2,7 +2,7 @@ name: Deploy GitHub Pages
 on:
   push:
     branches: [main, white-product-refinement]
-    paths: ['website/product/**', 'website/README.md', 'website/trace/**', '.github/workflows/pages.yml']
+    paths: ['website/product/**', 'website/README.md', '.github/workflows/pages.yml']
   pull_request:
     paths: ['website/product/**', 'website/README.md', '.github/workflows/pages.yml']
   release:
@@ -43,10 +43,6 @@ jobs:
           path: _site/
           include-hidden-files: true
           retention-days: 7
-      - name: Include TRACE launch experience
-        run: |
-          mkdir -p _site/trace
-          cp website/trace/index.html _site/trace/index.html
       - name: Preserve browser evidence and authored sources
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
