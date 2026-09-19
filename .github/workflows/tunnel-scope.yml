@@ -1,0 +1,67 @@
+name: Tunnel Scope portable build
+
+on:
+  push:
+    branches: [feat/tunnel-scope-3d]
+    paths:
+      - '.github/workflows/tunnel-scope.yml'
+      - 'tools/scope/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tunnel-scope-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare exact source snapshot and pinned renderer dependencies
+        shell: bash
+        run: |
+          mkdir -p _scope_artifacts/vendor
+          git archive --format=zip --output=_scope_artifacts/source.zip 9b099be86f4fb00a5c506bc2d6d9d7be8a79f67d
+          python3 - <<'PY'
+          import io, json, tarfile, urllib.request, hashlib
+          from pathlib import Path
+          target = Path('_scope_artifacts/vendor')
+          packages = {
+              'three': ('0.170.0', {'package/build/three.cjs': 'three.cjs', 'package/LICENSE': 'THREE-LICENSE.txt'}),
+              'd3-hierarchy': ('3.1.2', {'package/dist/d3-hierarchy.min.js': 'd3-hierarchy.min.js', 'package/LICENSE': 'D3-LICENSE.txt'}),
+              'fflate': ('0.8.2', {'package/umd/index.js': 'fflate.min.js', 'package/LICENSE': 'FFLATE-LICENSE.txt'})
+          }
+          manifest = {}
+          for name, (version, files) in packages.items():
+              url = f'https://registry.npmjs.org/{name}/-/{name}-{version}.tgz'
+              req = urllib.request.Request(url, headers={'User-Agent': 'TunnelScopeBuild/1.0'})
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  archive = response.read()
+              manifest[name] = {'version': version, 'url': url, 'archive_sha256': hashlib.sha256(archive).hexdigest()}
+              with tarfile.open(fileobj=io.BytesIO(archive), mode='r:gz') as tar:
+                  for source, filename in files.items():
+                      stream = tar.extractfile(source)
+                      if stream is None:
+                          raise RuntimeError('Missing dependency file: ' + source)
+                      (target / filename).write_bytes(stream.read())
+          (target / 'manifest.json').write_text(json.dumps(manifest, indent=2))
+          PY
+      - name: Build self-contained visualizer when application sources are present
+        shell: bash
+        run: |
+          if [ -f tools/scope/build.py ]; then
+            python3 tools/scope/build.py --archive _scope_artifacts/source.zip --vendor _scope_artifacts/vendor --output _scope_artifacts/Tunnel-Scope.html
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tunnel-scope-build
+          path: _scope_artifacts/
+          retention-days: 7
+          if-no-files-found: error
