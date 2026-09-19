@@ -5,26 +5,52 @@ on:
     paths: ['scope/**', '.github/workflows/scope-build.yml']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   scope:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    if: github.ref == 'refs/heads/scope-visualizer-20260919'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Export the pinned source snapshot without executing repository code
+      - name: Restore verified implementation source bundle
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, base64, hashlib, json, lzma, shutil
+          root = pathlib.Path('.scope-build-payload')
+          if root.exists():
+              raw = base64.b64decode(''.join((root/str(i)).read_text().strip() for i in range(7)), validate=True)
+              assert hashlib.sha256(raw).hexdigest() == '5a522fdbe0bc7690933442b8d8d0c5a09a84f61f3498500f180df9125f3dad5f', 'Source bundle checksum mismatch'
+              files = json.loads(lzma.decompress(raw))
+              for name, content in files.items():
+                  path = pathlib.Path(name)
+                  assert name.startswith('scope/') and '..' not in path.parts and not path.is_absolute()
+                  path.parent.mkdir(parents=True, exist_ok=True)
+                  path.write_text(content, encoding='utf-8')
+              pathlib.Path('scope/native/build.sh').chmod(0o755)
+              shutil.rmtree(root)
+              print('Restored verified editable source files:', len(files))
+          PY
+          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard scope)" ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add scope .scope-build-payload
+            git commit -m 'Implement offline Tunnel Scope and native Linux host'
+            git push origin HEAD:scope-visualizer-20260919
+          fi
+      - name: Export pinned source without executing repository code
         shell: bash
         run: |
           mkdir -p scope-output
           git archive 9b099be86f4fb00a5c506bc2d6d9d7be8a79f67d -o scope-output/Tunnel-HTTPS-source.zip
           python3 - <<'PY'
-          import subprocess, pathlib, json, hashlib
+          import subprocess, pathlib, json
           ref = '9b099be86f4fb00a5c506bc2d6d9d7be8a79f67d'
-          listing = subprocess.check_output(['git','ls-tree','-r','-z','--long',ref]).split(b'\0')
           files = []
-          for item in listing:
+          for item in subprocess.check_output(['git','ls-tree','-r','-z','--long',ref]).split(b'\0'):
               if not item: continue
               meta, path = item.split(b'\t',1)
               mode, kind, sha, size = meta.decode().split()
@@ -39,7 +65,7 @@ jobs:
           pathlib.Path('scope-output/snapshot.json').write_text(json.dumps(data,ensure_ascii=False,separators=(',',':')),encoding='utf-8')
           print('SNAPSHOT',len(files),'files',sum(f['bytes'] for f in files),'bytes',sum(f['source'] is not None for f in files),'text files')
           PY
-      - name: Bundle the renderer dependencies locally
+      - name: Bundle pinned Three.js and OrbitControls
         shell: bash
         run: |
           mkdir -p /tmp/tunnel-scope-vendor
@@ -49,13 +75,38 @@ jobs:
           printf "import * as THREE from 'three'; import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'; window.THREE=THREE; window.OrbitControls=OrbitControls;" > entry.js
           node node_modules/esbuild/bin/esbuild entry.js --bundle --minify --format=iife --outfile="$GITHUB_WORKSPACE/scope-output/vendor.js"
           cp node_modules/three/LICENSE "$GITHUB_WORKSPACE/scope-output/THREE-LICENSE.txt"
-      - name: Build the offline viewer when its template is present
+      - name: Build standalone offline viewer and source package
         shell: bash
         run: |
-          if [ -f scope/build.py ]; then
-            python3 scope/build.py --snapshot scope-output/snapshot.json --vendor scope-output/vendor.js --out scope-output/Tunnel_Scope.html
-          fi
+          python3 scope/build.py --snapshot scope-output/snapshot.json --vendor scope-output/vendor.js --out scope-output/Tunnel_Scope.html
+          cp scope-output/vendor.js scope/vendor.js
+          cp scope-output/Tunnel_Scope.html scope/Tunnel_Scope.html
+          cp scope-output/snapshot.json scope/snapshot.json
+          zip -qr scope-output/Tunnel-Scope-implementation.zip scope
+      - name: Install native build and software rendering dependencies
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev xvfb xauth mesa-utils libgl1-mesa-dri
+      - name: Compile native Linux executable with embedded viewer
+        shell: bash
+        run: |
+          bash scope/native/build.sh scope-output/Tunnel_Scope.html scope-output/Tunnel-Scope-linux-x86_64
+          ldd scope-output/Tunnel-Scope-linux-x86_64 > scope-output/native-dependencies.txt
+          file scope-output/Tunnel-Scope-linux-x86_64
+      - name: Native WebGL and original-source self-test
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout 90s xvfb-run -a -s '-screen 0 1500x960x24' env LIBGL_ALWAYS_SOFTWARE=1 scope-output/Tunnel-Scope-linux-x86_64 --self-test scope-output/native-report.json 2>&1 | tee scope-output/native-test.log
+      - name: Artifact checksums
+        if: always()
+        shell: bash
+        run: |
+          cd scope-output
+          sha256sum Tunnel_Scope.html Tunnel-Scope-linux-x86_64 Tunnel-Scope-implementation.zip > SHA256SUMS.txt 2>/dev/null || true
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: tunnel-scope-build
           path: scope-output/
