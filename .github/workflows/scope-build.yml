@@ -1,0 +1,64 @@
+name: Tunnel Scope build
+on:
+  push:
+    branches: [scope-visualizer-20260919]
+    paths: ['scope/**', '.github/workflows/scope-build.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Export the pinned source snapshot without executing repository code
+        shell: bash
+        run: |
+          mkdir -p scope-output
+          git archive 9b099be86f4fb00a5c506bc2d6d9d7be8a79f67d -o scope-output/Tunnel-HTTPS-source.zip
+          python3 - <<'PY'
+          import subprocess, pathlib, json, hashlib
+          ref = '9b099be86f4fb00a5c506bc2d6d9d7be8a79f67d'
+          listing = subprocess.check_output(['git','ls-tree','-r','-z','--long',ref]).split(b'\0')
+          files = []
+          for item in listing:
+              if not item: continue
+              meta, path = item.split(b'\t',1)
+              mode, kind, sha, size = meta.decode().split()
+              if kind != 'blob': continue
+              raw = subprocess.check_output(['git','cat-file','blob',sha])
+              text = None
+              try:
+                  if b'\0' not in raw: text = raw.decode('utf-8')
+              except UnicodeDecodeError: pass
+              files.append({'path':path.decode('utf-8'),'bytes':len(raw),'sha':sha,'source':text,'binary':text is None})
+          data = {'repo':'Sp2ctr2/Tunnel-HTTPS','commit':ref,'commitDate':'2026-09-13T12:54:04Z','files':files}
+          pathlib.Path('scope-output/snapshot.json').write_text(json.dumps(data,ensure_ascii=False,separators=(',',':')),encoding='utf-8')
+          print('SNAPSHOT',len(files),'files',sum(f['bytes'] for f in files),'bytes',sum(f['source'] is not None for f in files),'text files')
+          PY
+      - name: Bundle the renderer dependencies locally
+        shell: bash
+        run: |
+          mkdir -p /tmp/tunnel-scope-vendor
+          cd /tmp/tunnel-scope-vendor
+          npm init -y
+          npm install --ignore-scripts --no-audit --no-fund three@0.170.0 esbuild@0.24.0
+          printf "import * as THREE from 'three'; import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'; window.THREE=THREE; window.OrbitControls=OrbitControls;" > entry.js
+          node node_modules/esbuild/bin/esbuild entry.js --bundle --minify --format=iife --outfile="$GITHUB_WORKSPACE/scope-output/vendor.js"
+          cp node_modules/three/LICENSE "$GITHUB_WORKSPACE/scope-output/THREE-LICENSE.txt"
+      - name: Build the offline viewer when its template is present
+        shell: bash
+        run: |
+          if [ -f scope/build.py ]; then
+            python3 scope/build.py --snapshot scope-output/snapshot.json --vendor scope-output/vendor.js --out scope-output/Tunnel_Scope.html
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tunnel-scope-build
+          path: scope-output/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
